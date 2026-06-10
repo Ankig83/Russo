@@ -1,0 +1,27 @@
+# Netlify — деплой Vite + React (РУССО)
+# https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# React Router — все маршруты отдают index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# GLB и статика — кэш для быстрой загрузки 3D-модели
+[[headers]]
+  for = "/models/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
