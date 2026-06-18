@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "optimize:glb": "gltf-transform resize public/models/shkaf_full.glb public/models/shkaf_tmp.glb --width 1024 --height 1024 && gltf-transform webp public/models/shkaf_tmp.glb public/models/shkaf.glb && del public\\models\\shkaf_tmp.glb"
+    "optimize:glb": "gltf-transform resize public/models/shkaf_full.glb public/models/shkaf_tmp.glb --width 1024 --height 1024 && gltf-transform webp public/models/shkaf_tmp.glb public/models/shkaf.glb --quality 90 && del public\\models\\shkaf_tmp.glb"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

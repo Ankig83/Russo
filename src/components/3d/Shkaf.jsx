@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useThree } from '@react-three/fiber'
 import { useGLTF, Html, ContactShadows } from '@react-three/drei'
+import * as THREE from 'three'
 import gsap from 'gsap'
 import { drawerSections } from '../../constants/sections'
 import {
@@ -67,12 +68,16 @@ function resolveNode(object, sectionId) {
 }
 
 /** Шкаф — GLB с анимацией дверец (ось Z, как в Blender) */
+/** Порог смещения мыши (px) — выше него клик считается вращением */
+const DRAG_THRESHOLD_PX = 5
+
 export default function Shkaf() {
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
   const rootRef = useRef()
   const leftDoorRef = useRef()
   const rightDoorRef = useRef()
   const closedRotations = useRef({ left: 0, right: 0 })
+  const pointerDownPos = useRef({ x: 0, y: 0 })
   const navigate = useNavigate()
 
   const [hoveredDrawer, setHoveredDrawer] = useState(null)
@@ -85,7 +90,7 @@ export default function Shkaf() {
   const floorY = useMemo(() => getFloorY(model, SHKAF_ROOT_NAME), [model])
   const { center, size } = bounds
 
-  // Скрыть декор HDRI-сцены — оставить только shkaf
+  // Скрыть декор HDRI-сцены — оставить только shkaf; настроить материалы
   const scenePrepared = useRef(null)
   useEffect(() => {
     if (scenePrepared.current === model.uuid) return
@@ -99,11 +104,31 @@ export default function Shkaf() {
 
     model.traverse((child) => {
       if (!child.isMesh) return
+      child.castShadow = true
+      child.receiveShadow = true
+
       const materials = Array.isArray(child.material) ? child.material : [child.material]
       materials.forEach((mat) => {
         if (!mat) return
-        mat.envMapIntensity = 1.25
-        if (mat.normalMap) mat.normalScale?.set(1, 1)
+
+        // Усилить отражения окружения для PBR-эффекта
+        mat.envMapIntensity = 1.4
+
+        // Правильное цветовое пространство текстур
+        if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace
+        if (mat.emissiveMap) mat.emissiveMap.colorSpace = THREE.SRGBColorSpace
+
+        // Нормали — полная сила
+        if (mat.normalMap) {
+          mat.normalScale = mat.normalScale ?? new THREE.Vector2(1, 1)
+          mat.normalScale.set(1, 1)
+        }
+
+        // Материалы без текстур (процедурные) — сделать их visually интересными
+        if (!mat.map && mat.isMeshStandardMaterial) {
+          mat.roughness = Math.min(mat.roughness ?? 1, 0.65)
+        }
+
         mat.needsUpdate = true
       })
     })
@@ -196,9 +221,19 @@ export default function Shkaf() {
     [navigate, setAnimating, setActiveDrawerId],
   )
 
+  const handlePointerDown = useCallback((event) => {
+    pointerDownPos.current = { x: event.clientX, y: event.clientY }
+  }, [])
+
   const handleClick = useCallback(
     (event) => {
       event.stopPropagation()
+
+      // Игнорировать клик если была перетяжка (вращение камеры)
+      const dx = event.clientX - pointerDownPos.current.x
+      const dy = event.clientY - pointerDownPos.current.y
+      if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD_PX) return
+
       const clickedName = event.object?.name
       const { activeDrawerId } = useShkafStore.getState()
 
@@ -252,6 +287,7 @@ export default function Shkaf() {
   return (
     <group
       ref={rootRef}
+      onPointerDown={handlePointerDown}
       onClick={handleClick}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}

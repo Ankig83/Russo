@@ -12,13 +12,15 @@ import { USE_GLB_ENVIRONMENT } from '../../constants/shkafNodes'
 Environment.preload?.({ preset: 'studio' })
 
 /** Освещение */
-const AMBIENT_INTENSITY = 0.45
-const FILL_LIGHT_INTENSITY = 0.55
+const AMBIENT_INTENSITY = 0.35
+const FILL_LIGHT_INTENSITY = 0.4
 const FILL_LIGHT_POSITION = [-5, 4, -3]
+const RIM_LIGHT_INTENSITY = 0.3
+const RIM_LIGHT_POSITION = [3, 6, -5]
 
-/** OrbitControls — лёгкое вращение вокруг шкафа */
-const ORBIT_MIN_POLAR = Math.PI / 3.2
-const ORBIT_MAX_POLAR = Math.PI / 2.15
+/** OrbitControls — небольшой диапазон вертикали, свободная горизонталь */
+const ORBIT_MIN_POLAR = Math.PI / 4
+const ORBIT_MAX_POLAR = Math.PI / 2.1
 
 function CanvasLoader() {
   const { active } = useProgress()
@@ -90,14 +92,22 @@ export default function Scene() {
         {!USE_GLB_ENVIRONMENT && <color attach="background" args={[STUDIO_BG]} />}
 
         <ambientLight intensity={AMBIENT_INTENSITY} />
-        <hemisphereLight color="#ffffff" groundColor="#c8c8c8" intensity={0.45} />
+        <hemisphereLight color="#ffffff" groundColor="#b0b0b0" intensity={0.35} />
+        {/* Заполняющий свет слева-сзади */}
         <directionalLight
           color={STUDIO_LIGHT_COLOR}
           intensity={FILL_LIGHT_INTENSITY}
           position={FILL_LIGHT_POSITION}
         />
+        {/* Контровой свет справа-сзади — создаёт объём */}
+        <directionalLight
+          color="#fff5e6"
+          intensity={RIM_LIGHT_INTENSITY}
+          position={RIM_LIGHT_POSITION}
+        />
 
         <OrbitControls
+          makeDefault
           enablePan={false}
           enableRotate
           minPolarAngle={ORBIT_MIN_POLAR}
