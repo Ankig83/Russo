@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "optimize:glb": "gltf-transform resize public/models/shkaf_full.glb public/models/shkaf_tmp.glb --width 512 --height 512 && gltf-transform webp public/models/shkaf_tmp.glb public/models/shkaf.glb && del public\\models\\shkaf_tmp.glb"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -22,6 +23,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@gltf-transform/cli": "^4.2.1",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@types/react": "^19.2.14",

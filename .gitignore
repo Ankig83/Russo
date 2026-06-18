@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Тяжёлый исходник из Blender (в git не кладём)
+public/models/shkaf_full.glb

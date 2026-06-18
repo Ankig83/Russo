@@ -1,10 +1,10 @@
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
-export const SHKAF_MODEL_VERSION = '5'
+export const SHKAF_MODEL_VERSION = '6'
 export const SHKAF_MODEL_PATH = `/models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
 
-/** В GLB уже есть HDRI из Blender — не дублировать studio Environment на сцене */
-export const USE_GLB_ENVIRONMENT = true
+/** HDRI из лёгкого GLB слабый — используем studio Environment на сайте */
+export const USE_GLB_ENVIRONMENT = false
 
 /** Корневой узел шкафа в Blender */
 export const SHKAF_ROOT_NAME = 'shkaf'
