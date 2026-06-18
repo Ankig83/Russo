@@ -1,36 +1,39 @@
 import { Box3, Vector3 } from 'three'
 
-/** Имя меша пола в GLB (Blender «Плоскость») */
+/** Корневой объект шкафа в GLB */
+export const SHKAF_ROOT_NAME = 'shkaf'
+
+/** Имя меша пола (старые экспорты) */
 export const FLOOR_NODE_NAME = 'Плоскость'
 
-/** Bbox шкафа без пола */
-export function getCabinetBounds(object, exclude = [FLOOR_NODE_NAME]) {
+/** Найти объект по имени в дереве */
+export function findByName(object, name) {
+  let found = null
+  object.traverse((child) => {
+    if (child.name === name && !found) found = child
+  })
+  return found
+}
+
+/** Bbox шкафа — только внутри узла shkaf, без ящиков как отдельных исключений */
+export function getCabinetBounds(object, rootName = SHKAF_ROOT_NAME) {
+  const root = findByName(object, rootName) || object
   const box = new Box3()
 
-  object.traverse((child) => {
-    if (child.isMesh && !exclude.includes(child.name)) {
-      box.expandByObject(child)
-    }
+  root.traverse((child) => {
+    if (child.isMesh) box.expandByObject(child)
   })
 
   return {
     box,
     center: box.getCenter(new Vector3()),
     size: box.getSize(new Vector3()),
+    root,
   }
 }
 
-/** Y верхней поверхности пола */
-export function getFloorY(object, floorName = FLOOR_NODE_NAME) {
-  const box = new Box3()
-  let floor = null
-
-  object.traverse((child) => {
-    if (child.isMesh && child.name === floorName) floor = child
-  })
-
-  if (!floor) return 0
-
-  box.setFromObject(floor)
-  return box.max.y
+/** Y «пола» под шкафом — нижняя точка bbox */
+export function getFloorY(object, rootName = SHKAF_ROOT_NAME) {
+  const { box } = getCabinetBounds(object, rootName)
+  return box.isEmpty() ? 0 : box.min.y
 }

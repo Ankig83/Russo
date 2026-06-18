@@ -13,7 +13,10 @@ export const DRAWER_DEPTH = 0.45
 export const DRAWER_GAP = 0.05
 
 /** Анимации GSAP */
+export const DOOR_ROTATION_AXIS = 'z' // ось вращения дверец в Blender
 export const DOOR_OPEN_ANGLE = Math.PI / 2
+export const DOOR_LEFT_OPEN_ANGLE = DOOR_OPEN_ANGLE
+export const DOOR_RIGHT_OPEN_ANGLE = -DOOR_OPEN_ANGLE
 export const DOOR_OPEN_DURATION = 0.8
 export const DRAWER_PULL_DISTANCE = 0.4
 export const DRAWER_OPEN_DURATION = 0.6

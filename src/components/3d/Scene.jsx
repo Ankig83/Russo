@@ -7,6 +7,7 @@ import Loader from './Loader'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
 import { STUDIO_BG, STUDIO_BG_STYLE, STUDIO_LIGHT_COLOR } from '../../constants/scene'
+import { USE_GLB_ENVIRONMENT } from '../../constants/shkafNodes'
 
 Environment.preload?.({ preset: 'studio' })
 
@@ -31,7 +32,10 @@ function CanvasLoader() {
 function handleCanvasCreated({ gl, scene }) {
   gl.toneMapping = THREE.ACESFilmicToneMapping
   gl.toneMappingExposure = 1.05
-  scene.background = new THREE.Color(STUDIO_BG)
+
+  if (!USE_GLB_ENVIRONMENT) {
+    scene.background = new THREE.Color(STUDIO_BG)
+  }
 
   gl.domElement.addEventListener('webglcontextlost', (e) => {
     e.preventDefault()
@@ -82,7 +86,7 @@ export default function Scene() {
           display: 'block',
         }}
       >
-        <color attach="background" args={[STUDIO_BG]} />
+        {!USE_GLB_ENVIRONMENT && <color attach="background" args={[STUDIO_BG]} />}
 
         <ambientLight intensity={AMBIENT_INTENSITY} />
         <hemisphereLight color="#ffffff" groundColor="#b0b0b0" intensity={0.3} />
@@ -108,9 +112,11 @@ export default function Scene() {
           </group>
         </Suspense>
 
-        <Suspense fallback={null}>
-          <StudioEnvironment />
-        </Suspense>
+        {!USE_GLB_ENVIRONMENT && (
+          <Suspense fallback={null}>
+            <StudioEnvironment />
+          </Suspense>
+        )}
       </Canvas>
     </div>
   )
