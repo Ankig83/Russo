@@ -1,6 +1,6 @@
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
-export const SHKAF_MODEL_VERSION = '6'
+export const SHKAF_MODEL_VERSION = '7'
 export const SHKAF_MODEL_PATH = `/models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
 
 /** HDRI из лёгкого GLB слабый — используем studio Environment на сайте */
