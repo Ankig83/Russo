@@ -30,7 +30,7 @@ useGLTF.preload(SHKAF_MODEL_PATH)
 const SHADOW_MAP_SIZE = 512
 const SHADOW_CAMERA_SIZE = 2.5
 const SHADOW_CAMERA_FAR = 20
-const KEY_LIGHT_INTENSITY = 1.4
+const KEY_LIGHT_INTENSITY = 1.8
 const KEY_LIGHT_HEIGHT = 8
 
 const CONTACT_SHADOW_OPACITY = 0.45
@@ -102,7 +102,8 @@ export default function Shkaf() {
       const materials = Array.isArray(child.material) ? child.material : [child.material]
       materials.forEach((mat) => {
         if (!mat) return
-        mat.envMapIntensity = 1
+        mat.envMapIntensity = 1.25
+        if (mat.normalMap) mat.normalScale?.set(1, 1)
         mat.needsUpdate = true
       })
     })
@@ -125,48 +126,58 @@ export default function Shkaf() {
     })
   }, [model, shkafGroup])
 
-  const openDoors = useCallback(() => {
-    if (doorsOpen || animating) return
+  const animateDoors = useCallback(
+    (open) => {
+      if (animating) return
 
-    setAnimating(true)
+      setAnimating(true)
 
-    const left = leftDoorRef.current
-    const right = rightDoorRef.current
+      const left = leftDoorRef.current
+      const right = rightDoorRef.current
 
-    if (!left || !right) {
-      console.warn('РУССО: door_left / door_right не найдены в GLB')
-      setDoorsOpen(true)
-      setAnimating(false)
-      return
-    }
-
-    const axis = DOOR_ROTATION_AXIS
-    const tl = gsap.timeline({
-      onComplete: () => {
-        setDoorsOpen(true)
+      if (!left || !right) {
+        setDoorsOpen(open)
         setAnimating(false)
-      },
-    })
+        return
+      }
 
-    tl.to(
-      left.rotation,
-      {
-        [axis]: closedRotations.current.left + DOOR_LEFT_OPEN_ANGLE,
-        duration: DOOR_OPEN_DURATION,
-        ease: 'power2.out',
-      },
-      0,
-    )
-    tl.to(
-      right.rotation,
-      {
-        [axis]: closedRotations.current.right + DOOR_RIGHT_OPEN_ANGLE,
-        duration: DOOR_OPEN_DURATION,
-        ease: 'power2.out',
-      },
-      0,
-    )
-  }, [doorsOpen, animating, setDoorsOpen, setAnimating])
+      const axis = DOOR_ROTATION_AXIS
+      const tl = gsap.timeline({
+        onComplete: () => {
+          setDoorsOpen(open)
+          setAnimating(false)
+        },
+      })
+
+      tl.to(
+        left.rotation,
+        {
+          [axis]: open
+            ? closedRotations.current.left + DOOR_LEFT_OPEN_ANGLE
+            : closedRotations.current.left,
+          duration: DOOR_OPEN_DURATION,
+          ease: 'power2.out',
+        },
+        0,
+      )
+      tl.to(
+        right.rotation,
+        {
+          [axis]: open
+            ? closedRotations.current.right + DOOR_RIGHT_OPEN_ANGLE
+            : closedRotations.current.right,
+          duration: DOOR_OPEN_DURATION,
+          ease: 'power2.out',
+        },
+        0,
+      )
+    },
+    [animating, setDoorsOpen, setAnimating],
+  )
+
+  const toggleDoors = useCallback(() => {
+    animateDoors(!doorsOpen)
+  }, [doorsOpen, animateDoors])
 
   const handleDrawerClick = useCallback(
     (section, target) => {
@@ -204,9 +215,9 @@ export default function Shkaf() {
         }
       }
 
-      if (!doorsOpen) openDoors()
+      toggleDoors()
     },
-    [doorsOpen, animating, model, openDoors, handleDrawerClick],
+    [doorsOpen, animating, model, toggleDoors, handleDrawerClick],
   )
 
   const handlePointerOver = useCallback(

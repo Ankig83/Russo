@@ -16,9 +16,8 @@ export default function Header() {
         РУССО
       </Link>
 
-      {!doorsOpen && (
-        <div className="flex flex-col items-center gap-2 pb-4">
-          <div className="animate-bounce">
+      <div className="flex flex-col items-center gap-2 pb-4">
+          <div className={doorsOpen ? '' : 'animate-bounce'}>
             <svg
               className="h-6 w-6 text-neutral-600"
               fill="none"
@@ -26,14 +25,23 @@ export default function Header() {
               stroke="currentColor"
               strokeWidth={2}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d={doorsOpen ? 'M19 9l-7 7-7-7' : 'M5 15l7-7 7 7'}
+              />
             </svg>
           </div>
           <p className="text-sm tracking-wide text-neutral-500 md:text-base">
-            {isMobile ? 'нажми на шкаф' : 'открой шкаф'}
+            {doorsOpen
+              ? isMobile
+                ? 'нажми, чтобы закрыть'
+                : 'закрой шкаф'
+              : isMobile
+                ? 'нажми на шкаф'
+                : 'открой шкаф'}
           </p>
         </div>
-      )}
     </header>
   )
 }

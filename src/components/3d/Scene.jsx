@@ -11,13 +11,14 @@ import { USE_GLB_ENVIRONMENT } from '../../constants/shkafNodes'
 
 Environment.preload?.({ preset: 'studio' })
 
-/** Освещение (без теней — ключевой свет внутри Shkaf, привязан к позиции шкафа) */
-const AMBIENT_INTENSITY = 0.3
-const FILL_LIGHT_INTENSITY = 0.35
+/** Освещение */
+const AMBIENT_INTENSITY = 0.45
+const FILL_LIGHT_INTENSITY = 0.55
 const FILL_LIGHT_POSITION = [-5, 4, -3]
 
-/** OrbitControls */
-const ORBIT_POLAR_ANGLE = Math.PI / 2.4
+/** OrbitControls — лёгкое вращение вокруг шкафа */
+const ORBIT_MIN_POLAR = Math.PI / 3.2
+const ORBIT_MAX_POLAR = Math.PI / 2.15
 
 function CanvasLoader() {
   const { active } = useProgress()
@@ -63,7 +64,7 @@ function EnableShadows() {
 }
 
 function StudioEnvironment() {
-  return <Environment preset="studio" background={false} environmentIntensity={0.4} />
+  return <Environment preset="studio" background={false} environmentIntensity={0.75} />
 }
 
 /** Студийная 3D-сцена: шкаф + пол из GLB */
@@ -78,7 +79,7 @@ export default function Scene() {
       <Canvas
         shadows
         camera={{ fov: 40, near: 0.05, far: 200, position: [0, 1.5, 5] }}
-        gl={{ powerPreference: 'high-performance', antialias: false }}
+        gl={{ powerPreference: 'high-performance', antialias: true }}
         onCreated={handleCanvasCreated}
         style={{
           width: '100vw',
@@ -89,7 +90,7 @@ export default function Scene() {
         {!USE_GLB_ENVIRONMENT && <color attach="background" args={[STUDIO_BG]} />}
 
         <ambientLight intensity={AMBIENT_INTENSITY} />
-        <hemisphereLight color="#ffffff" groundColor="#b0b0b0" intensity={0.3} />
+        <hemisphereLight color="#ffffff" groundColor="#c8c8c8" intensity={0.45} />
         <directionalLight
           color={STUDIO_LIGHT_COLOR}
           intensity={FILL_LIGHT_INTENSITY}
@@ -99,10 +100,10 @@ export default function Scene() {
         <OrbitControls
           enablePan={false}
           enableRotate
-          minPolarAngle={ORBIT_POLAR_ANGLE}
-          maxPolarAngle={ORBIT_POLAR_ANGLE}
+          minPolarAngle={ORBIT_MIN_POLAR}
+          maxPolarAngle={ORBIT_MAX_POLAR}
           enableZoom={!isMobile}
-          touches={{ ONE: 1, TWO: 0 }}
+          touches={{ ONE: 0, TWO: 2 }}
         />
 
         <Suspense fallback={null}>
