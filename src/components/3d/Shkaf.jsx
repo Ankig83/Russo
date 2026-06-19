@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
+import { useRef, useState, useEffect, useCallback, useMemo, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useThree } from '@react-three/fiber'
 import { useGLTF, Html, ContactShadows } from '@react-three/drei'
@@ -11,6 +11,7 @@ import {
   USE_GLB_ENVIRONMENT,
   SHKAF_ROOT_NAME,
   HIDE_SCENE_DECOR,
+  DRAWER_PLAQUES,
 } from '../../constants/shkafNodes'
 import {
   DOOR_ROTATION_AXIS,
@@ -29,6 +30,8 @@ import {
   findDrawerNodeFromHit,
   findDrawerSectionFromHit,
 } from '../../utils/drawerHit'
+import { applyProceduralMaterialFixups } from '../../utils/materialFixups'
+import DrawerPlaque from './DrawerPlaque'
 
 useGLTF.preload(SHKAF_MODEL_PATH)
 
@@ -59,36 +62,31 @@ const _tmpVec = new THREE.Vector3()
 
 /**
  * Подпись над ящиком.
- * Позиция вычисляется один раз в useEffect (после рендера Three.js),
- * поэтому матрицы гарантированно обновлены и позиция точная.
+ *
+ * Ключевой нюанс drei: Html позиционируется через родительский <group>,
+ * а не через prop position={} на самом Html.
+ * Поэтому мы оборачиваем Html в группу с мировыми координатами ящика.
  */
 function DrawerLabel({ node, label }) {
   const [pos, setPos] = useState(null)
 
   useEffect(() => {
     if (!node) return
-    // forceWorldMatrix: обойти всю цепочку родителей
     node.updateWorldMatrix(true, false)
     node.getWorldPosition(_tmpVec)
-    // смещаем чуть выше центра ящика
-    setPos([_tmpVec.x, _tmpVec.y + 0.12, _tmpVec.z])
+    setPos([_tmpVec.x, _tmpVec.y + 0.15, _tmpVec.z])
   }, [node])
 
   if (!pos) return null
 
   return (
-    <Html
-      center
-      position={pos}
-      distanceFactor={5}
-      zIndexRange={[100, 0]}
-      // предотвращает ошибки с occlude
-      occlude={false}
-    >
-      <div className="pointer-events-none whitespace-nowrap rounded-md bg-black/75 px-3 py-1.5 text-sm font-semibold text-white shadow-lg backdrop-blur-sm">
-        {label}
-      </div>
-    </Html>
+    <group position={pos}>
+      <Html center distanceFactor={5} zIndexRange={[100, 0]}>
+        <div className="pointer-events-none whitespace-nowrap rounded-md bg-black/75 px-3 py-1.5 text-sm font-semibold text-white shadow-lg backdrop-blur-sm">
+          {label}
+        </div>
+      </Html>
+    </group>
   )
 }
 
@@ -101,7 +99,7 @@ function DrawerLabels({ model, visible }) {
           section,
           node: model.getObjectByName(SHKAF_NODE_MAP[section.id]),
         }))
-        .filter((entry) => entry.node),
+        .filter((entry) => entry.node && !DRAWER_PLAQUES[entry.section.id]),
     [model],
   )
 
@@ -146,6 +144,9 @@ export default function Shkaf() {
         child.visible = child.name === SHKAF_ROOT_NAME
       })
     }
+
+    // Ножки: M_BlackCopper_v3 — процедурный материал без карт в GLB
+    applyProceduralMaterialFixups(model)
 
     model.traverse((child) => {
       if (!child.isMesh) return
@@ -254,31 +255,43 @@ export default function Shkaf() {
       setAnimating(true)
       setActiveDrawerId(section.id)
 
-      // Двигаем основной узел ящика
+      // Вычисляем направление "от шкафа к зрителю" в локальных координатах ящика.
+      // Мировой вектор к зрителю: (0, 0, 1) — Three.js смотрит в -Z,
+      // камера стоит за +Z, значит "вперёд" для ящика = мировой +Z.
+      target.updateWorldMatrix(true, false)
+      const _pullDir = new THREE.Vector3(0, 0, 1)
+      if (target.parent) {
+        // перевод из мирового пространства в локальное родителя
+        _pullDir.transformDirection(
+          new THREE.Matrix4().copy(target.parent.matrixWorld).invert(),
+        )
+      }
+
+      const animateNode = (node) => ({
+        x: node.position.x + _pullDir.x * DRAWER_PULL_DISTANCE,
+        y: node.position.y + _pullDir.y * DRAWER_PULL_DISTANCE,
+        z: node.position.z + _pullDir.z * DRAWER_PULL_DISTANCE,
+        duration: DRAWER_OPEN_DURATION,
+        ease: 'power2.out',
+      })
+
       const tl = gsap.timeline({
         onComplete: () => {
-          setTimeout(() => navigate(section.route), NAVIGATE_DELAY_MS)
+          setTimeout(() => {
+            setAnimating(false)
+            navigate(section.route)
+          }, NAVIGATE_DELAY_MS)
         },
       })
 
-      tl.to(target.position, {
-        z: target.position.z + DRAWER_PULL_DISTANCE,
-        duration: DRAWER_OPEN_DURATION,
-        ease: 'power2.out',
-      }, 0)
+      tl.to(target.position, animateNode(target), 0)
 
-      // Ищем парный узел (крышка/корпус: drawer_4 ↔ drawer_4.1)
+      // Парный узел (крышка ↔ корпус: drawer_4 ↔ drawer_4.1)
       const pairedName = target.name.endsWith('.1')
-        ? target.name.slice(0, -2)           // drawer_4.1 → drawer_4
-        : target.name + '.1'                 // drawer_4   → drawer_4.1
+        ? target.name.slice(0, -2)
+        : target.name + '.1'
       const paired = model.getObjectByName(pairedName)
-      if (paired) {
-        tl.to(paired.position, {
-          z: paired.position.z + DRAWER_PULL_DISTANCE,
-          duration: DRAWER_OPEN_DURATION,
-          ease: 'power2.out',
-        }, 0)
-      }
+      if (paired) tl.to(paired.position, animateNode(paired), 0)
     },
     [model, navigate, setAnimating, setActiveDrawerId],
   )
@@ -373,6 +386,23 @@ export default function Shkaf() {
       <FitCamera object={model} />
 
       <DrawerLabels model={model} visible={showDrawerLabels} />
+
+      {showDrawerLabels && (
+        <Suspense fallback={null}>
+          {Object.entries(DRAWER_PLAQUES).map(([sectionId, imageUrl]) => {
+            const node = model.getObjectByName(SHKAF_NODE_MAP[sectionId])
+            if (!node) return null
+            return (
+              <DrawerPlaque
+                key={sectionId}
+                node={node}
+                imageUrl={imageUrl}
+                visible={showDrawerLabels}
+              />
+            )
+          })}
+        </Suspense>
+      )}
     </group>
   )
 }
