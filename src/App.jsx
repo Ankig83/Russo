@@ -1,8 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
 import Catalog from './pages/Catalog'
-import Gaft from './pages/Gaft'
-import Kefa from './pages/Kefa'
+import Portfolio from './pages/Portfolio'
+import Exclusive from './pages/Exclusive'
 import Cart from './pages/Cart'
 import Profile from './pages/Profile'
 import Login from './pages/Login'
@@ -16,8 +16,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/catalog" element={<Catalog />} />
-        <Route path="/gaft" element={<Gaft />} />
-        <Route path="/kefa" element={<Kefa />} />
+        <Route path="/portfolio" element={<Portfolio />} />
+        <Route path="/exclusive" element={<Exclusive />} />
         <Route path="/cart" element={<Cart />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/login" element={<Login />} />

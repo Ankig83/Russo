@@ -34,7 +34,7 @@ export default function FitCamera({ object }) {
 
       if (controls) {
         controls.target.copy(center)
-        controls.minDistance = maxDim * 0.5
+        controls.minDistance = maxDim * 0.35
         controls.maxDistance = maxDim * 4
         controls.update()
       }

@@ -25,13 +25,17 @@ import { STUDIO_LIGHT_COLOR } from '../../constants/scene'
 import { useShkafStore } from '../../store/shkafStore'
 import FitCamera from './FitCamera'
 import { getCabinetBounds, getFloorY, findByName } from '../../utils/cabinetBounds'
+import {
+  findDrawerNodeFromHit,
+  findDrawerSectionFromHit,
+} from '../../utils/drawerHit'
 
 useGLTF.preload(SHKAF_MODEL_PATH)
 
 const SHADOW_MAP_SIZE = 512
 const SHADOW_CAMERA_SIZE = 2.5
 const SHADOW_CAMERA_FAR = 20
-const KEY_LIGHT_INTENSITY = 1.8
+const KEY_LIGHT_INTENSITY = 1.2
 const KEY_LIGHT_HEIGHT = 8
 
 const CONTACT_SHADOW_OPACITY = 0.45
@@ -51,23 +55,65 @@ function GlbEnvironment({ source }) {
   return null
 }
 
-function DrawerLabel({ label, position }) {
+const _tmpVec = new THREE.Vector3()
+
+/**
+ * Подпись над ящиком.
+ * Позиция вычисляется один раз в useEffect (после рендера Three.js),
+ * поэтому матрицы гарантированно обновлены и позиция точная.
+ */
+function DrawerLabel({ node, label }) {
+  const [pos, setPos] = useState(null)
+
+  useEffect(() => {
+    if (!node) return
+    // forceWorldMatrix: обойти всю цепочку родителей
+    node.updateWorldMatrix(true, false)
+    node.getWorldPosition(_tmpVec)
+    // смещаем чуть выше центра ящика
+    setPos([_tmpVec.x, _tmpVec.y + 0.12, _tmpVec.z])
+  }, [node])
+
+  if (!pos) return null
+
   return (
-    <Html center position={position} distanceFactor={6} zIndexRange={[100, 0]}>
-      <div className="pointer-events-none whitespace-nowrap rounded-md bg-black/60 px-3 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
+    <Html
+      center
+      position={pos}
+      distanceFactor={5}
+      zIndexRange={[100, 0]}
+      // предотвращает ошибки с occlude
+      occlude={false}
+    >
+      <div className="pointer-events-none whitespace-nowrap rounded-md bg-black/75 px-3 py-1.5 text-sm font-semibold text-white shadow-lg backdrop-blur-sm">
         {label}
       </div>
     </Html>
   )
 }
 
-function resolveNode(object, sectionId) {
-  const nodeName = SHKAF_NODE_MAP[sectionId]
-  if (!nodeName) return null
-  return object.getObjectByName(nodeName)
+/** Все подписи ящиков — видны когда двери открыты */
+function DrawerLabels({ model, visible }) {
+  const entries = useMemo(
+    () =>
+      drawerSections
+        .map((section) => ({
+          section,
+          node: model.getObjectByName(SHKAF_NODE_MAP[section.id]),
+        }))
+        .filter((entry) => entry.node),
+    [model],
+  )
+
+  if (!visible) return null
+
+  return entries.map(({ section, node }) => (
+    <DrawerLabel key={section.id} node={node} label={section.label} />
+  ))
 }
 
-/** Шкаф — GLB с анимацией дверец (ось Z, как в Blender) */
+
+/** Шкаф — GLB с анимацией дверец и ящиков */
 /** Порог смещения мыши (px) — выше него клик считается вращением */
 const DRAG_THRESHOLD_PX = 5
 
@@ -80,7 +126,6 @@ export default function Shkaf() {
   const pointerDownPos = useRef({ x: 0, y: 0 })
   const navigate = useNavigate()
 
-  const [hoveredDrawer, setHoveredDrawer] = useState(null)
   const { doorsOpen, animating, setDoorsOpen, setAnimating, setActiveDrawerId } =
     useShkafStore()
 
@@ -111,12 +156,8 @@ export default function Shkaf() {
       materials.forEach((mat) => {
         if (!mat) return
 
-        // Усилить отражения окружения для PBR-эффекта
-        mat.envMapIntensity = 1.4
-
-        // Правильное цветовое пространство текстур
-        if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace
-        if (mat.emissiveMap) mat.emissiveMap.colorSpace = THREE.SRGBColorSpace
+        // envMapIntensity умеренный — иначе яркий студийный HDR даёт перветку
+        mat.envMapIntensity = 0.85
 
         // Нормали — полная сила
         if (mat.normalMap) {
@@ -124,9 +165,9 @@ export default function Shkaf() {
           mat.normalScale.set(1, 1)
         }
 
-        // Материалы без текстур (процедурные) — сделать их visually интересными
+        // Процедурные материалы без текстур — чуть снизить roughness для блеска
         if (!mat.map && mat.isMeshStandardMaterial) {
-          mat.roughness = Math.min(mat.roughness ?? 1, 0.65)
+          mat.roughness = Math.min(mat.roughness ?? 1, 0.6)
         }
 
         mat.needsUpdate = true
@@ -148,6 +189,10 @@ export default function Shkaf() {
       door_left: !!left,
       door_right: !!right,
       shkaf: !!shkafGroup,
+      drawers: drawerSections.map((s) => ({
+        id: s.id,
+        found: !!model.getObjectByName(SHKAF_NODE_MAP[s.id]),
+      })),
     })
   }, [model, shkafGroup])
 
@@ -209,16 +254,33 @@ export default function Shkaf() {
       setAnimating(true)
       setActiveDrawerId(section.id)
 
-      gsap.to(target.position, {
-        z: target.position.z + DRAWER_PULL_DISTANCE,
-        duration: DRAWER_OPEN_DURATION,
-        ease: 'power2.out',
+      // Двигаем основной узел ящика
+      const tl = gsap.timeline({
         onComplete: () => {
           setTimeout(() => navigate(section.route), NAVIGATE_DELAY_MS)
         },
       })
+
+      tl.to(target.position, {
+        z: target.position.z + DRAWER_PULL_DISTANCE,
+        duration: DRAWER_OPEN_DURATION,
+        ease: 'power2.out',
+      }, 0)
+
+      // Ищем парный узел (крышка/корпус: drawer_4 ↔ drawer_4.1)
+      const pairedName = target.name.endsWith('.1')
+        ? target.name.slice(0, -2)           // drawer_4.1 → drawer_4
+        : target.name + '.1'                 // drawer_4   → drawer_4.1
+      const paired = model.getObjectByName(pairedName)
+      if (paired) {
+        tl.to(paired.position, {
+          z: paired.position.z + DRAWER_PULL_DISTANCE,
+          duration: DRAWER_OPEN_DURATION,
+          ease: 'power2.out',
+        }, 0)
+      }
     },
-    [navigate, setAnimating, setActiveDrawerId],
+    [model, navigate, setAnimating, setActiveDrawerId],
   )
 
   const handlePointerDown = useCallback((event) => {
@@ -229,30 +291,24 @@ export default function Shkaf() {
     (event) => {
       event.stopPropagation()
 
-      // Игнорировать клик если была перетяжка (вращение камеры)
       const dx = event.clientX - pointerDownPos.current.x
       const dy = event.clientY - pointerDownPos.current.y
       if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD_PX) return
 
-      const clickedName = event.object?.name
       const { activeDrawerId } = useShkafStore.getState()
 
-      if (doorsOpen && !animating && !activeDrawerId && clickedName) {
-        const drawerSection = drawerSections.find(
-          (s) => SHKAF_NODE_MAP[s.id] === clickedName,
-        )
-        if (drawerSection) {
-          const drawerNode = model.getObjectByName(clickedName)
-          if (drawerNode) {
-            handleDrawerClick(drawerSection, drawerNode)
-            return
-          }
+      if (doorsOpen && !animating && !activeDrawerId) {
+        const drawerNode = findDrawerNodeFromHit(event.object)
+        const drawerSection = findDrawerSectionFromHit(event.object)
+        if (drawerSection && drawerNode) {
+          handleDrawerClick(drawerSection, drawerNode)
+          return
         }
       }
 
       toggleDoors()
     },
-    [doorsOpen, animating, model, toggleDoors, handleDrawerClick],
+    [doorsOpen, animating, toggleDoors, handleDrawerClick],
   )
 
   const handlePointerOver = useCallback(
@@ -261,38 +317,29 @@ export default function Shkaf() {
       const { animating, activeDrawerId } = useShkafStore.getState()
       if (!doorsOpen || animating || activeDrawerId) return
 
-      const clickedName = event.object?.name
-      const drawerSection = drawerSections.find(
-        (s) => SHKAF_NODE_MAP[s.id] === clickedName,
-      )
+      const drawerSection = findDrawerSectionFromHit(event.object)
       if (drawerSection) {
-        const node = model.getObjectByName(clickedName)
-        if (node) {
-          setHoveredDrawer({
-            label: drawerSection.label,
-            position: [node.position.x, node.position.y + 0.15, node.position.z],
-          })
-          document.body.style.cursor = 'pointer'
-        }
+        document.body.style.cursor = 'pointer'
       }
     },
-    [doorsOpen, model],
+    [doorsOpen],
   )
 
   const handlePointerOut = useCallback(() => {
-    setHoveredDrawer(null)
     document.body.style.cursor = 'auto'
   }, [])
 
+  const showDrawerLabels = doorsOpen && !animating
+
   return (
-    <group
-      ref={rootRef}
-      onPointerDown={handlePointerDown}
-      onClick={handleClick}
-      onPointerOver={handlePointerOver}
-      onPointerOut={handlePointerOut}
-    >
-      <primitive object={model} />
+    <group ref={rootRef}>
+      <primitive
+        object={model}
+        onPointerDown={handlePointerDown}
+        onClick={handleClick}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+      />
       <GlbEnvironment source={scene} />
 
       <directionalLight
@@ -325,9 +372,7 @@ export default function Shkaf() {
 
       <FitCamera object={model} />
 
-      {hoveredDrawer && (
-        <DrawerLabel label={hoveredDrawer.label} position={hoveredDrawer.position} />
-      )}
+      <DrawerLabels model={model} visible={showDrawerLabels} />
     </group>
   )
 }

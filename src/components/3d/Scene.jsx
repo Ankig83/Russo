@@ -18,9 +18,10 @@ const FILL_LIGHT_POSITION = [-5, 4, -3]
 const RIM_LIGHT_INTENSITY = 0.3
 const RIM_LIGHT_POSITION = [3, 6, -5]
 
-/** OrbitControls — небольшой диапазон вертикали, свободная горизонталь */
-const ORBIT_MIN_POLAR = Math.PI / 4
-const ORBIT_MAX_POLAR = Math.PI / 2.1
+/** OrbitControls — широкий вертикальный диапазон + панорамирование при зуме */
+const ORBIT_MIN_POLAR = 0.12 // почти вид сверху
+const ORBIT_MAX_POLAR = Math.PI / 2.02 // почти уровень пола
+const ORBIT_PAN_SPEED = 0.65
 
 function CanvasLoader() {
   const { active } = useProgress()
@@ -34,7 +35,8 @@ function CanvasLoader() {
 
 function handleCanvasCreated({ gl, scene }) {
   gl.toneMapping = THREE.ACESFilmicToneMapping
-  gl.toneMappingExposure = 1.05
+  // экспозиция снижена — иначе студийный HDR перветяет кожу и дерево
+  gl.toneMappingExposure = 0.9
 
   if (!USE_GLB_ENVIRONMENT) {
     scene.background = new THREE.Color(STUDIO_BG)
@@ -66,7 +68,7 @@ function EnableShadows() {
 }
 
 function StudioEnvironment() {
-  return <Environment preset="studio" background={false} environmentIntensity={0.75} />
+  return <Environment preset="studio" background={false} environmentIntensity={0.45} />
 }
 
 /** Студийная 3D-сцена: шкаф + пол из GLB */
@@ -108,11 +110,17 @@ export default function Scene() {
 
         <OrbitControls
           makeDefault
-          enablePan={false}
+          enablePan={!isMobile}
           enableRotate
           minPolarAngle={ORBIT_MIN_POLAR}
           maxPolarAngle={ORBIT_MAX_POLAR}
+          panSpeed={ORBIT_PAN_SPEED}
           enableZoom={!isMobile}
+          mouseButtons={{
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.PAN,
+          }}
           touches={{ ONE: 0, TWO: 2 }}
         />
 
