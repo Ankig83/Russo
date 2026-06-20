@@ -4,7 +4,19 @@ import * as THREE from 'three'
  * Процедурные материалы Blender без PBR-карт в GLB.
  * Берём текстуры с sourceMaterialName и подкрашиваем под нужный вид.
  */
+/** Акцентные детали — ремень, не экономим на качестве материала */
+const ACCENT_MESH_NAMES = new Set(['124_', '145_', '17_', '19_'])
+
 export const PROCEDURAL_MATERIAL_FIXUPS = {
+  // Кожаный ободок с заклёпками вокруг бересты (145_) — процедурный без карт
+  'Материал.005': {
+    sourceMaterialName: 'Brown Leather 4',
+    color: '#1e0e08',
+    metalness: 0.1,
+    roughness: 0.58,
+    envMapIntensity: 1.1,
+    normalScale: 2.0,
+  },
   // Ножки шкафа
   M_BlackCopper_v3: {
     sourceMaterialName: 'Rough copper metal',
@@ -80,6 +92,10 @@ function cloneWithSourceMaps(source, fixup) {
   mat.metalness = fixup.metalness
   mat.roughness = fixup.roughness
   mat.envMapIntensity = fixup.envMapIntensity ?? 0.85
+  if (fixup.normalScale && mat.normalMap) {
+    mat.normalScale = mat.normalScale ?? new THREE.Vector2(1, 1)
+    mat.normalScale.set(fixup.normalScale, fixup.normalScale)
+  }
   mat.needsUpdate = true
   return mat
 }

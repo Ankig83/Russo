@@ -12,6 +12,7 @@ import {
   SHKAF_ROOT_NAME,
   HIDE_SCENE_DECOR,
   DRAWER_PLAQUES,
+  HIDDEN_DRAWER_LABELS,
 } from '../../constants/shkafNodes'
 import {
   DOOR_ROTATION_AXIS,
@@ -99,7 +100,12 @@ function DrawerLabels({ model, visible }) {
           section,
           node: model.getObjectByName(SHKAF_NODE_MAP[section.id]),
         }))
-        .filter((entry) => entry.node && !DRAWER_PLAQUES[entry.section.id]),
+        .filter(
+          (entry) =>
+            entry.node &&
+            !DRAWER_PLAQUES[entry.section.id] &&
+            !HIDDEN_DRAWER_LABELS.includes(entry.section.id),
+        ),
     [model],
   )
 
@@ -114,6 +120,9 @@ function DrawerLabels({ model, visible }) {
 /** Шкаф — GLB с анимацией дверец и ящиков */
 /** Порог смещения мыши (px) — выше него клик считается вращением */
 const DRAG_THRESHOLD_PX = 5
+
+/** Акцентные детали — кожаные ручки, ободок, береста */
+const ACCENT_MESH_NAMES = new Set(['124_', '145_', '17_', '19_', 'ручка_левая', 'ручка_правая'])
 
 export default function Shkaf() {
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
@@ -169,6 +178,15 @@ export default function Shkaf() {
         // Процедурные материалы без текстур — чуть снизить roughness для блеска
         if (!mat.map && mat.isMeshStandardMaterial) {
           mat.roughness = Math.min(mat.roughness ?? 1, 0.6)
+        }
+
+        // Акцентные детали (ручки, береста, ободок) — максимальный рельеф
+        if (ACCENT_MESH_NAMES.has(child.name)) {
+          mat.envMapIntensity = 1.2
+          if (mat.normalMap) {
+            mat.normalScale = mat.normalScale ?? new THREE.Vector2(1, 1)
+            mat.normalScale.set(2.0, 2.0)
+          }
         }
 
         mat.needsUpdate = true
