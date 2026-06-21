@@ -13,7 +13,7 @@ export const SHKAF_ROOT_NAME = 'shkaf'
 export const HIDE_SCENE_DECOR = true
 
 /** Ящики без текстовой подписи (кликабельны, но label не показываем) */
-export const HIDDEN_DRAWER_LABELS = ['drawer_1']
+export const HIDDEN_DRAWER_LABELS = ['drawer_1', 'drawer_6']
 
 /** Ящики с 3D-табличкой вместо текстовой подписи */
 export const DRAWER_PLAQUES = {

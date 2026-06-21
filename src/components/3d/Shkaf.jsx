@@ -362,6 +362,9 @@ export default function Shkaf() {
 
   const showDrawerLabels = doorsOpen && !animating
 
+  // Тёплый свет внутри шкафа — включается когда двери открыты
+  const interiorLightPos = [center.x, center.y + size.y * 0.1, center.z - size.z * 0.15]
+
   return (
     <group ref={rootRef}>
       <primitive
@@ -372,6 +375,15 @@ export default function Shkaf() {
         onPointerOut={handlePointerOut}
       />
       <GlbEnvironment source={scene} />
+
+      {/* Тёплый свет внутри шкафа при открытых дверях */}
+      <pointLight
+        position={interiorLightPos}
+        color="#ffbe7a"
+        intensity={doorsOpen ? 1.8 : 0}
+        distance={size.y * 2}
+        decay={2}
+      />
 
       <directionalLight
         castShadow
