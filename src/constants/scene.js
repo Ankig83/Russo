@@ -13,11 +13,11 @@ export const ORBIT_MAX_DISTANCE_FACTOR = 3.5
 export const ORBIT_MIN_DISTANCE_FACTOR = 0.38
 
 /** Начальная позиция камеры (FitCamera) */
-export const CAMERA_DISTANCE_FACTOR = 2.65
+export const CAMERA_DISTANCE_FACTOR = 3.0
 /** Подъём камеры над точкой наведения — доля от maxDim шкафа */
-export const CAMERA_HEIGHT_FACTOR = 0.22
+export const CAMERA_HEIGHT_FACTOR = 0.55
 /** Высота точки наведения — доля от высоты bbox (0.5 = геом. центр) */
-export const CAMERA_AIM_HEIGHT_RATIO = 0.46
+export const CAMERA_AIM_HEIGHT_RATIO = 0.28
 
 export const STUDIO_BG_STYLE = {
   background: STUDIO_BG,

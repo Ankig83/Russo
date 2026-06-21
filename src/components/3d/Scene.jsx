@@ -89,7 +89,7 @@ export default function Scene() {
 
       <Canvas
         shadows
-        camera={{ fov: 38, near: 0.05, far: 200, position: [0, 1.2, 8] }}
+        camera={{ fov: 42, near: 0.05, far: 200, position: [0, 3.5, 11] }}
         gl={{ powerPreference: 'high-performance', antialias: true }}
         onCreated={handleCanvasCreated}
         style={{
