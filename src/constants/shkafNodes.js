@@ -20,6 +20,23 @@ export const DRAWER_PLAQUES = {
   drawer_5: '/assets/labels/portfolio.png',
 }
 
+/** Декоративные ноды — не кликабельны */
+export const INACTIVE_DRAWER_NODES = new Set()
+
+/** Декоративные mesh — без hover, клика и анимации (124_ = нижняя планка) */
+export const INACTIVE_MESH_NAMES = new Set(['124_'])
+
+/**
+ * Парные ящики: крышка → корпус (.1).
+ * drawe_3 — опечатка в Blender (drawer_3); внутренний child переименовывается в drawer_3.1.
+ */
+export const DRAWER_LID_TO_BODY = {
+  drawe_3: 'drawer_3.1',
+  drawer_4: 'drawer_4.1',
+  draver_5: 'drawer_5.1',
+  drawer_6: 'drawer_6.1',
+}
+
 /**
  * Сопоставление section.id → имя ноды из GLB.
  *
@@ -36,8 +53,8 @@ export const SHKAF_NODE_MAP = {
   door_right: 'door_right',
   drawer_1:   'drawer_1',   // верхний большой
   drawer_2:   null,         // пока не активен
-  drawer_3:   'drawe_3',    // третий (опечатка в Blender)
-  drawer_4:   'drawer_4',   // нижний левый 1
-  drawer_5:   'draver_5',   // нижний правый 1 (опечатка в Blender)
-  drawer_6:   'drawer_6',   // нижний левый 2
+  drawer_3:   'drawe_3',    // «О нас» — крышка (опечатка в Blender), корпус drawer_3.1
+  drawer_4:   'drawer_4',    // «Контакты» — нижний левый (#3)
+  drawer_5:   'draver_5',    // «Портфолио» — нижний правый (#4)
+  drawer_6:   'drawer_6',    // «Эскизы» — нижний правый, крышка + drawer_6.1
 }

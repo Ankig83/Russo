@@ -5,7 +5,7 @@ import * as THREE from 'three'
  * Берём текстуры с sourceMaterialName и подкрашиваем под нужный вид.
  */
 /** Акцентные детали — ремень, не экономим на качестве материала */
-const ACCENT_MESH_NAMES = new Set(['124_', '145_', '17_', '19_'])
+const ACCENT_MESH_NAMES = new Set(['145_', '17_', '19_'])
 
 export const PROCEDURAL_MATERIAL_FIXUPS = {
   // Кожаный ободок с заклёпками вокруг бересты (145_) — процедурный без карт

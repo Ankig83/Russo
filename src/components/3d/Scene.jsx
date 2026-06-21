@@ -27,7 +27,7 @@ const RIM_LIGHT_POSITION = [3, 6, -5]
 
 /** OrbitControls — широкий вертикальный диапазон + панорамирование при зуме */
 const ORBIT_MIN_POLAR = 0.12 // почти вид сверху
-const ORBIT_MAX_POLAR = Math.PI / 2.02 // почти уровень пола
+const ORBIT_MAX_POLAR = Math.PI / 2.35 // не опускаем камеру ниже горизонта шкафа
 const ORBIT_PAN_SPEED = 0.65
 
 function CanvasLoader() {
@@ -89,7 +89,7 @@ export default function Scene() {
 
       <Canvas
         shadows
-        camera={{ fov: 40, near: 0.05, far: 200, position: [0, 0, 5] }}
+        camera={{ fov: 38, near: 0.05, far: 200, position: [0, 1.2, 8] }}
         gl={{ powerPreference: 'high-performance', antialias: true }}
         onCreated={handleCanvasCreated}
         style={{

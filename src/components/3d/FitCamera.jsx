@@ -3,14 +3,15 @@ import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import { getCabinetBounds } from '../../utils/cabinetBounds'
 import {
+  CAMERA_AIM_HEIGHT_RATIO,
+  CAMERA_DISTANCE_FACTOR,
+  CAMERA_HEIGHT_FACTOR,
   ORBIT_MAX_DISTANCE_FACTOR,
   ORBIT_MIN_DISTANCE_FACTOR,
 } from '../../constants/scene'
 import { SHKAF_ROOT_NAME } from '../../constants/shkafNodes'
 
-const CAMERA_DISTANCE_FACTOR = 2.2
-
-/** Подгоняет камеру и OrbitControls — прямой фронтальный вид на шкаф */
+/** Подгоняет камеру и OrbitControls — фронтальный вид чуть сверху */
 export default function FitCamera({ object, sceneScale = 1, placementY = 0 }) {
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls)
@@ -27,16 +28,17 @@ export default function FitCamera({ object, sceneScale = 1, placementY = 0 }) {
       const maxDim = Math.max(size.x, size.y, size.z)
       const worldMaxDim = maxDim * sceneScale
       const distance = worldMaxDim * CAMERA_DISTANCE_FACTOR
+      const heightLift = worldMaxDim * CAMERA_HEIGHT_FACTOR
 
-      // Центр шкафа в мировых координатах (учитываем scale-группу и placementY)
+      // Точка наведения чуть выше геом. центра — не «с пола»
+      const aimLocalY = box.min.y + size.y * CAMERA_AIM_HEIGHT_RATIO
       const target = new THREE.Vector3(
         center.x * sceneScale,
-        (placementY + center.y) * sceneScale,
+        (placementY + aimLocalY) * sceneScale,
         center.z * sceneScale,
       )
 
-      // Камера строго напротив — на высоте центра, без наклона сверху
-      camera.position.set(target.x, target.y, target.z + distance)
+      camera.position.set(target.x, target.y + heightLift, target.z + distance)
       camera.near = 0.05
       camera.far = 200
       camera.updateProjectionMatrix()
