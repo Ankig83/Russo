@@ -4,6 +4,7 @@ import { Environment, OrbitControls, useProgress } from '@react-three/drei'
 import * as THREE from 'three'
 import Shkaf from './Shkaf'
 import Loader from './Loader'
+import StudioBackdrop from './StudioBackdrop'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
 import { STUDIO_BG, STUDIO_BG_STYLE, STUDIO_LIGHT_COLOR } from '../../constants/scene'
@@ -130,6 +131,9 @@ export default function Scene() {
             <Shkaf />
           </group>
         </Suspense>
+
+        {/* Фон вне группы масштабирования — фиксированные мировые координаты */}
+        <StudioBackdrop />
 
         {!USE_GLB_ENVIRONMENT && (
           <Suspense fallback={null}>

@@ -1,5 +1,5 @@
 /** Студийная сцена — нейтральный фон */
-export const STUDIO_BG = '#ECECEC'
+export const STUDIO_BG = '#c0c0c0'
 
 export const STUDIO_BG_STYLE = {
   background: STUDIO_BG,

@@ -384,7 +384,6 @@ export default function Shkaf() {
       />
       <GlbEnvironment source={scene} />
 
-      {/* Три точки подсветки под потолком шкафа — равномерно по ширине, светят вниз */}
       {INTERIOR_LIGHTS.map((pos, i) => (
         <pointLight
           key={i}
