@@ -1,7 +1,7 @@
-import { useRef, useState, useEffect, useCallback, useMemo, Suspense } from 'react'
+import { useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useThree } from '@react-three/fiber'
-import { useGLTF, Html, ContactShadows } from '@react-three/drei'
+import { useGLTF, ContactShadows } from '@react-three/drei'
 import * as THREE from 'three'
 import gsap from 'gsap'
 import { drawerSections } from '../../constants/sections'
@@ -11,8 +11,6 @@ import {
   USE_GLB_ENVIRONMENT,
   SHKAF_ROOT_NAME,
   HIDE_SCENE_DECOR,
-  DRAWER_PLAQUES,
-  HIDDEN_DRAWER_LABELS,
 } from '../../constants/shkafNodes'
 import {
   DOOR_ROTATION_AXIS,
@@ -32,7 +30,6 @@ import {
   findDrawerSectionFromHit,
 } from '../../utils/drawerHit'
 import { applyProceduralMaterialFixups } from '../../utils/materialFixups'
-import DrawerPlaque from './DrawerPlaque'
 
 useGLTF.preload(SHKAF_MODEL_PATH)
 
@@ -46,6 +43,37 @@ const CONTACT_SHADOW_OPACITY = 0.45
 const CONTACT_SHADOW_BLUR = 2
 const CONTACT_SHADOW_FAR = 2.5
 
+const HOVER_NUDGE = 0.032
+const HOVER_WIGGLE_DURATION = 0.45
+const HOVER_EMISSIVE = '#c9a040'
+const HOVER_EMISSIVE_INTENSITY = 0.32
+
+const _pullDir = new THREE.Vector3()
+const _parentMatrix = new THREE.Matrix4()
+
+function getPairedDrawerName(name) {
+  return name.endsWith('.1') ? name.slice(0, -2) : `${name}.1`
+}
+
+function getDrawerNodes(model, sectionId) {
+  const nodeName = SHKAF_NODE_MAP[sectionId]
+  if (!nodeName) return []
+  const main = model.getObjectByName(nodeName)
+  if (!main) return []
+  const paired = model.getObjectByName(getPairedDrawerName(nodeName))
+  return paired ? [main, paired] : [main]
+}
+
+function getPullDirection(node) {
+  node.updateWorldMatrix(true, false)
+  _pullDir.set(0, 0, 1)
+  if (node.parent) {
+    _parentMatrix.copy(node.parent.matrixWorld).invert()
+    _pullDir.transformDirection(_parentMatrix)
+  }
+  return _pullDir.clone()
+}
+
 /** HDRI / фон из GLB */
 function GlbEnvironment({ source }) {
   const scene = useThree((s) => s.scene)
@@ -58,64 +86,6 @@ function GlbEnvironment({ source }) {
 
   return null
 }
-
-const _tmpVec = new THREE.Vector3()
-
-/**
- * Подпись над ящиком.
- *
- * Ключевой нюанс drei: Html позиционируется через родительский <group>,
- * а не через prop position={} на самом Html.
- * Поэтому мы оборачиваем Html в группу с мировыми координатами ящика.
- */
-function DrawerLabel({ node, label }) {
-  const [pos, setPos] = useState(null)
-
-  useEffect(() => {
-    if (!node) return
-    node.updateWorldMatrix(true, false)
-    node.getWorldPosition(_tmpVec)
-    setPos([_tmpVec.x, _tmpVec.y + 0.15, _tmpVec.z])
-  }, [node])
-
-  if (!pos) return null
-
-  return (
-    <group position={pos}>
-      <Html center distanceFactor={5} zIndexRange={[100, 0]}>
-        <div className="pointer-events-none whitespace-nowrap rounded-md bg-black/75 px-3 py-1.5 text-sm font-semibold text-white shadow-lg backdrop-blur-sm">
-          {label}
-        </div>
-      </Html>
-    </group>
-  )
-}
-
-/** Все подписи ящиков — видны когда двери открыты */
-function DrawerLabels({ model, visible }) {
-  const entries = useMemo(
-    () =>
-      drawerSections
-        .map((section) => ({
-          section,
-          node: model.getObjectByName(SHKAF_NODE_MAP[section.id]),
-        }))
-        .filter(
-          (entry) =>
-            entry.node &&
-            !DRAWER_PLAQUES[entry.section.id] &&
-            !HIDDEN_DRAWER_LABELS.includes(entry.section.id),
-        ),
-    [model],
-  )
-
-  if (!visible) return null
-
-  return entries.map(({ section, node }) => (
-    <DrawerLabel key={section.id} node={node} label={section.label} />
-  ))
-}
-
 
 /** Шкаф — GLB с анимацией дверец и ящиков */
 /** Порог смещения мыши (px) — выше него клик считается вращением */
@@ -131,6 +101,10 @@ export default function Shkaf({ sceneScale = 1 }) {
   const rightDoorRef = useRef()
   const closedRotations = useRef({ left: 0, right: 0 })
   const pointerDownPos = useRef({ x: 0, y: 0 })
+  const hoveredDrawerId = useRef(null)
+  const hoverTweens = useRef([])
+  const emissiveBackup = useRef(new Map())
+  const drawerBasePositions = useRef(new Map())
   const navigate = useNavigate()
 
   const { doorsOpen, animating, setDoorsOpen, setAnimating, setActiveDrawerId } =
@@ -142,7 +116,7 @@ export default function Shkaf({ sceneScale = 1 }) {
   const floorY = useMemo(() => getFloorY(model, SHKAF_ROOT_NAME), [model])
   const placementY = STUDIO_FLOOR_Y / sceneScale - floorY
   const alignedFloorY = placementY + floorY
-  const { center, size } = bounds
+  const { center, size, box } = bounds
 
   // Скрыть декор HDRI-сцены — оставить только shkaf; настроить материалы
   const scenePrepared = useRef(null)
@@ -160,7 +134,14 @@ export default function Shkaf({ sceneScale = 1 }) {
     applyProceduralMaterialFixups(model)
 
     model.traverse((child) => {
+      // Текстовые объекты из Blender
+      if (child.name.startsWith('Текст')) {
+        child.visible = false
+        return
+      }
+
       if (!child.isMesh) return
+
       child.castShadow = true
       child.receiveShadow = true
 
@@ -270,27 +251,106 @@ export default function Shkaf({ sceneScale = 1 }) {
     animateDoors(!doorsOpen)
   }, [doorsOpen, animateDoors])
 
+  const resetHoveredDrawerPositions = useCallback(() => {
+    if (!hoveredDrawerId.current) return
+    getDrawerNodes(model, hoveredDrawerId.current).forEach((node) => {
+      const base = drawerBasePositions.current.get(node.uuid)
+      if (base) node.position.copy(base)
+    })
+    drawerBasePositions.current.clear()
+  }, [model])
+
+  const clearDrawerHover = useCallback(() => {
+    hoverTweens.current.forEach((tween) => tween.kill())
+    hoverTweens.current = []
+    resetHoveredDrawerPositions()
+
+    emissiveBackup.current.forEach((orig, mat) => {
+      mat.emissive.copy(orig.emissive)
+      mat.emissiveIntensity = orig.intensity
+      mat.needsUpdate = true
+    })
+    emissiveBackup.current.clear()
+
+    hoveredDrawerId.current = null
+    document.body.style.cursor = 'auto'
+  }, [resetHoveredDrawerPositions])
+
+  const applyDrawerHover = useCallback(
+    (sectionId) => {
+      if (hoveredDrawerId.current === sectionId) return
+
+      hoverTweens.current.forEach((tween) => tween.kill())
+      hoverTweens.current = []
+      resetHoveredDrawerPositions()
+
+      emissiveBackup.current.forEach((orig, mat) => {
+        mat.emissive.copy(orig.emissive)
+        mat.emissiveIntensity = orig.intensity
+        mat.needsUpdate = true
+      })
+      emissiveBackup.current.clear()
+
+      hoveredDrawerId.current = sectionId
+      const nodes = getDrawerNodes(model, sectionId)
+
+      nodes.forEach((node) => {
+        drawerBasePositions.current.set(node.uuid, node.position.clone())
+
+        const base = drawerBasePositions.current.get(node.uuid)
+        const pull = getPullDirection(node)
+
+        hoverTweens.current.push(
+          gsap.to(node.position, {
+            x: base.x + pull.x * HOVER_NUDGE,
+            y: base.y + pull.y * HOVER_NUDGE,
+            z: base.z + pull.z * HOVER_NUDGE,
+            duration: HOVER_WIGGLE_DURATION,
+            yoyo: true,
+            repeat: -1,
+            ease: 'sine.inOut',
+          }),
+        )
+
+        node.traverse((child) => {
+          if (!child.isMesh) return
+          const materials = Array.isArray(child.material) ? child.material : [child.material]
+          materials.forEach((mat) => {
+            if (!mat?.isMeshStandardMaterial && !mat?.isMeshPhysicalMaterial) return
+            if (!emissiveBackup.current.has(mat)) {
+              emissiveBackup.current.set(mat, {
+                emissive: mat.emissive.clone(),
+                intensity: mat.emissiveIntensity ?? 1,
+              })
+            }
+            mat.emissive.set(HOVER_EMISSIVE)
+            mat.emissiveIntensity = HOVER_EMISSIVE_INTENSITY
+            mat.needsUpdate = true
+          })
+        })
+      })
+
+      document.body.style.cursor = 'pointer'
+    },
+    [model, resetHoveredDrawerPositions],
+  )
+
+  useEffect(() => {
+    if (!doorsOpen) clearDrawerHover()
+  }, [doorsOpen, clearDrawerHover])
+
   const handleDrawerClick = useCallback(
     (section, target) => {
+      clearDrawerHover()
       setAnimating(true)
       setActiveDrawerId(section.id)
 
-      // Вычисляем направление "от шкафа к зрителю" в локальных координатах ящика.
-      // Мировой вектор к зрителю: (0, 0, 1) — Three.js смотрит в -Z,
-      // камера стоит за +Z, значит "вперёд" для ящика = мировой +Z.
-      target.updateWorldMatrix(true, false)
-      const _pullDir = new THREE.Vector3(0, 0, 1)
-      if (target.parent) {
-        // перевод из мирового пространства в локальное родителя
-        _pullDir.transformDirection(
-          new THREE.Matrix4().copy(target.parent.matrixWorld).invert(),
-        )
-      }
+      const pull = getPullDirection(target)
 
       const animateNode = (node) => ({
-        x: node.position.x + _pullDir.x * DRAWER_PULL_DISTANCE,
-        y: node.position.y + _pullDir.y * DRAWER_PULL_DISTANCE,
-        z: node.position.z + _pullDir.z * DRAWER_PULL_DISTANCE,
+        x: node.position.x + pull.x * DRAWER_PULL_DISTANCE,
+        y: node.position.y + pull.y * DRAWER_PULL_DISTANCE,
+        z: node.position.z + pull.z * DRAWER_PULL_DISTANCE,
         duration: DRAWER_OPEN_DURATION,
         ease: 'power2.out',
       })
@@ -306,14 +366,10 @@ export default function Shkaf({ sceneScale = 1 }) {
 
       tl.to(target.position, animateNode(target), 0)
 
-      // Парный узел (крышка ↔ корпус: drawer_4 ↔ drawer_4.1)
-      const pairedName = target.name.endsWith('.1')
-        ? target.name.slice(0, -2)
-        : target.name + '.1'
-      const paired = model.getObjectByName(pairedName)
+      const paired = model.getObjectByName(getPairedDrawerName(target.name))
       if (paired) tl.to(paired.position, animateNode(paired), 0)
     },
-    [model, navigate, setAnimating, setActiveDrawerId],
+    [model, navigate, setAnimating, setActiveDrawerId, clearDrawerHover],
   )
 
   const handlePointerDown = useCallback((event) => {
@@ -352,27 +408,30 @@ export default function Shkaf({ sceneScale = 1 }) {
 
       const drawerSection = findDrawerSectionFromHit(event.object)
       if (drawerSection) {
-        document.body.style.cursor = 'pointer'
+        applyDrawerHover(drawerSection.id)
       }
     },
-    [doorsOpen],
+    [doorsOpen, applyDrawerHover],
   )
 
-  const handlePointerOut = useCallback(() => {
-    document.body.style.cursor = 'auto'
-  }, [])
+  const handlePointerOut = useCallback(
+    (event) => {
+      event.stopPropagation()
+      clearDrawerHover()
+    },
+    [clearDrawerHover],
+  )
 
-  const showDrawerLabels = doorsOpen && !animating
-
-  // Три точки подсветки под потолком шкафа — равномерно по ширине
-  const ceilY = center.y + size.y * 0.42
-  const interiorZ = center.z - size.z * 0.12
-  const lightDist = size.y * 1.6
-  const lightIntensity = doorsOpen ? 2.2 : 0
+  // Подсветка с потолка шкафа
+  const ceilingY = box.max.y - 0.06
+  const lightZ = center.z + size.z * 0.08
+  const targetY = center.y - size.y * 0.05
+  const lightDist = size.y * 1.8
+  const lightIntensity = doorsOpen ? 1.4 : 0
   const INTERIOR_LIGHTS = [
-    [center.x - size.x * 0.28, ceilY, interiorZ],
-    [center.x,                  ceilY, interiorZ],
-    [center.x + size.x * 0.28, ceilY, interiorZ],
+    { pos: [center.x - size.x * 0.28, ceilingY, lightZ], target: [center.x - size.x * 0.28, targetY, center.z] },
+    { pos: [center.x, ceilingY, lightZ], target: [center.x, targetY, center.z] },
+    { pos: [center.x + size.x * 0.28, ceilingY, lightZ], target: [center.x + size.x * 0.28, targetY, center.z] },
   ]
 
   return (
@@ -386,15 +445,19 @@ export default function Shkaf({ sceneScale = 1 }) {
       />
       <GlbEnvironment source={scene} />
 
-      {INTERIOR_LIGHTS.map((pos, i) => (
-        <pointLight
+      {INTERIOR_LIGHTS.map(({ pos, target }, i) => (
+        <spotLight
           key={i}
           position={pos}
           color="#ffcf8a"
           intensity={lightIntensity}
+          angle={0.62}
+          penumbra={0.95}
           distance={lightDist}
           decay={2}
-        />
+        >
+          <object3D attach="target" position={target} />
+        </spotLight>
       ))}
 
       <directionalLight
@@ -426,25 +489,6 @@ export default function Shkaf({ sceneScale = 1 }) {
       />
 
       <FitCamera object={model} sceneScale={sceneScale} placementY={placementY} />
-
-      <DrawerLabels model={model} visible={showDrawerLabels} />
-
-      {showDrawerLabels && (
-        <Suspense fallback={null}>
-          {Object.entries(DRAWER_PLAQUES).map(([sectionId, imageUrl]) => {
-            const node = model.getObjectByName(SHKAF_NODE_MAP[sectionId])
-            if (!node) return null
-            return (
-              <DrawerPlaque
-                key={sectionId}
-                node={node}
-                imageUrl={imageUrl}
-                visible={showDrawerLabels}
-              />
-            )
-          })}
-        </Suspense>
-      )}
     </group>
   )
 }
