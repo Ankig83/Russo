@@ -23,7 +23,7 @@ import {
   DRAWER_OPEN_DURATION,
   NAVIGATE_DELAY_MS,
 } from '../../constants/shkaf'
-import { STUDIO_LIGHT_COLOR } from '../../constants/scene'
+import { STUDIO_LIGHT_COLOR, STUDIO_FLOOR_Y } from '../../constants/scene'
 import { useShkafStore } from '../../store/shkafStore'
 import FitCamera from './FitCamera'
 import { getCabinetBounds, getFloorY, findByName } from '../../utils/cabinetBounds'
@@ -124,7 +124,7 @@ const DRAG_THRESHOLD_PX = 5
 /** Акцентные детали — кожаные ручки, ободок, береста */
 const ACCENT_MESH_NAMES = new Set(['124_', '145_', '17_', '19_', 'ручка_левая', 'ручка_правая'])
 
-export default function Shkaf() {
+export default function Shkaf({ sceneScale = 1 }) {
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
   const rootRef = useRef()
   const leftDoorRef = useRef()
@@ -140,6 +140,8 @@ export default function Shkaf() {
   const shkafGroup = useMemo(() => findByName(model, SHKAF_ROOT_NAME), [model])
   const bounds = useMemo(() => getCabinetBounds(model, SHKAF_ROOT_NAME), [model])
   const floorY = useMemo(() => getFloorY(model, SHKAF_ROOT_NAME), [model])
+  const placementY = STUDIO_FLOOR_Y / sceneScale - floorY
+  const alignedFloorY = placementY + floorY
   const { center, size } = bounds
 
   // Скрыть декор HDRI-сцены — оставить только shkaf; настроить материалы
@@ -374,7 +376,7 @@ export default function Shkaf() {
   ]
 
   return (
-    <group ref={rootRef}>
+    <group ref={rootRef} position={[0, placementY, 0]}>
       <primitive
         object={model}
         onPointerDown={handlePointerDown}
@@ -413,7 +415,7 @@ export default function Shkaf() {
       </directionalLight>
 
       <ContactShadows
-        position={[center.x, floorY + 0.01, center.z]}
+        position={[center.x, alignedFloorY + 0.01, center.z]}
         opacity={CONTACT_SHADOW_OPACITY}
         scale={Math.max(size.x, size.z) * 1.8}
         blur={CONTACT_SHADOW_BLUR}
@@ -423,7 +425,7 @@ export default function Shkaf() {
         resolution={256}
       />
 
-      <FitCamera object={model} />
+      <FitCamera object={model} sceneScale={sceneScale} placementY={placementY} />
 
       <DrawerLabels model={model} visible={showDrawerLabels} />
 

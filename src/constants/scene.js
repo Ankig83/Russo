@@ -1,6 +1,17 @@
 /** Студийная сцена — нейтральный фон */
 export const STUDIO_BG = '#c0c0c0'
 
+/** Y-координата пола студийного фона (мировые координаты) */
+export const STUDIO_FLOOR_Y = -1.5
+
+/** Туман — скрывает дальние края сцены (цвет = фон canvas) */
+export const STUDIO_FOG_NEAR = 35
+export const STUDIO_FOG_FAR = 70
+
+/** Макс. отдаление камеры от шкафа = maxDim × factor */
+export const ORBIT_MAX_DISTANCE_FACTOR = 2.1
+export const ORBIT_MIN_DISTANCE_FACTOR = 0.38
+
 export const STUDIO_BG_STYLE = {
   background: STUDIO_BG,
   width: '100vw',

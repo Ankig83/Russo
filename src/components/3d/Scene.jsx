@@ -7,7 +7,13 @@ import Loader from './Loader'
 import StudioBackdrop from './StudioBackdrop'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
-import { STUDIO_BG, STUDIO_BG_STYLE, STUDIO_LIGHT_COLOR } from '../../constants/scene'
+import {
+  STUDIO_BG,
+  STUDIO_BG_STYLE,
+  STUDIO_LIGHT_COLOR,
+  STUDIO_FOG_NEAR,
+  STUDIO_FOG_FAR,
+} from '../../constants/scene'
 import { USE_GLB_ENVIRONMENT } from '../../constants/shkafNodes'
 
 Environment.preload?.({ preset: 'studio' })
@@ -83,7 +89,7 @@ export default function Scene() {
 
       <Canvas
         shadows
-        camera={{ fov: 40, near: 0.05, far: 200, position: [0, 1.5, 5] }}
+        camera={{ fov: 40, near: 0.05, far: 200, position: [0, 0, 5] }}
         gl={{ powerPreference: 'high-performance', antialias: true }}
         onCreated={handleCanvasCreated}
         style={{
@@ -93,6 +99,7 @@ export default function Scene() {
         }}
       >
         {!USE_GLB_ENVIRONMENT && <color attach="background" args={[STUDIO_BG]} />}
+        <fog attach="fog" args={[STUDIO_BG, STUDIO_FOG_NEAR, STUDIO_FOG_FAR]} />
 
         <ambientLight intensity={AMBIENT_INTENSITY} />
         <hemisphereLight color="#ffffff" groundColor="#b0b0b0" intensity={0.35} />
@@ -128,7 +135,7 @@ export default function Scene() {
         <Suspense fallback={null}>
           <EnableShadows />
           <group scale={scale}>
-            <Shkaf />
+            <Shkaf sceneScale={scale} />
           </group>
         </Suspense>
 
