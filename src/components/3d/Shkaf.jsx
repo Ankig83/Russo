@@ -362,8 +362,16 @@ export default function Shkaf() {
 
   const showDrawerLabels = doorsOpen && !animating
 
-  // Тёплый свет внутри шкафа — включается когда двери открыты
-  const interiorLightPos = [center.x, center.y + size.y * 0.1, center.z - size.z * 0.15]
+  // Три точки подсветки под потолком шкафа — равномерно по ширине
+  const ceilY = center.y + size.y * 0.42
+  const interiorZ = center.z - size.z * 0.12
+  const lightDist = size.y * 1.6
+  const lightIntensity = doorsOpen ? 2.2 : 0
+  const INTERIOR_LIGHTS = [
+    [center.x - size.x * 0.28, ceilY, interiorZ],
+    [center.x,                  ceilY, interiorZ],
+    [center.x + size.x * 0.28, ceilY, interiorZ],
+  ]
 
   return (
     <group ref={rootRef}>
@@ -376,14 +384,17 @@ export default function Shkaf() {
       />
       <GlbEnvironment source={scene} />
 
-      {/* Тёплый свет внутри шкафа при открытых дверях */}
-      <pointLight
-        position={interiorLightPos}
-        color="#ffbe7a"
-        intensity={doorsOpen ? 1.8 : 0}
-        distance={size.y * 2}
-        decay={2}
-      />
+      {/* Три точки подсветки под потолком шкафа — равномерно по ширине, светят вниз */}
+      {INTERIOR_LIGHTS.map((pos, i) => (
+        <pointLight
+          key={i}
+          position={pos}
+          color="#ffcf8a"
+          intensity={lightIntensity}
+          distance={lightDist}
+          decay={2}
+        />
+      ))}
 
       <directionalLight
         castShadow
