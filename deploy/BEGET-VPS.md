@@ -1,67 +1,29 @@
 # Деплой на VPS Beget (ветка `beget`)
 
-**Автоматически:** push в ветку `beget` → GitHub Actions собирает `dist/` и заливает на сервер по SSH.
+**Автоматически:** push в ветку `beget` → GitHub Actions собирает `dist/` и заливает на сервер.
 
 Ручная загрузка файлов **не нужна**.
 
 ---
 
-## 1. На VPS (один раз)
+## 1. Секреты в GitHub (один раз)
 
-nginx, папка, ufw — как уже настроено:
+**github.com/Ankig83/Russo → Settings → Secrets and variables → Actions → New repository secret**
 
-```bash
-mkdir -p /var/www/russo
-chown -R www-data:www-data /var/www/russo
-```
-
----
-
-## 2. SSH-ключ для GitHub Actions (один раз)
-
-### На своём ПК (PowerShell)
-
-```powershell
-ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\beget_deploy -N '""'
-```
-
-Появятся:
-- `beget_deploy` — приватный (в GitHub Secrets)
-- `beget_deploy.pub` — публичный (на сервер)
-
-### Публичный ключ на сервер (VNC)
-
-```bash
-mkdir -p ~/.ssh
-chmod 700 ~/.ssh
-nano ~/.ssh/authorized_keys
-```
-
-Вставь **одну строку** из `beget_deploy.pub`, сохрани.
-
-```bash
-chmod 600 ~/.ssh/authorized_keys
-```
-
----
-
-## 3. Секреты в GitHub
-
-Репозиторий **Ankig83/Russo** → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
-
-| Имя | Значение |
-|-----|----------|
+| Secret | Значение |
+|--------|----------|
 | `BEGET_HOST` | `93.189.229.230` |
 | `BEGET_USER` | `root` |
-| `BEGET_SSH_KEY` | весь текст файла `beget_deploy` (приватный ключ) |
+| `BEGET_PASSWORD` | пароль root от VPS |
+
+SSH-ключ **не нужен** — только логин и пароль.
 
 ---
 
-## 4. Как деплоить дальше
+## 2. Как деплоить
 
 ```bash
 git checkout beget
-# правки...
 git add .
 git commit -m "..."
 git push origin beget
@@ -69,21 +31,30 @@ git push origin beget
 
 GitHub → **Actions** → **Deploy to Beget VPS** — зелёная галочка = сайт обновлён.
 
-Или в Actions нажми **Run workflow** вручную.
+Или: Actions → **Run workflow** (кнопка вручную).
 
 ---
 
-## 5. Проверка
+## 3. Проверка
 
-`http://93.189.229.230` — шкаф должен открываться.
+`http://93.189.229.230`
 
 ---
 
 ## Ветки
 
-| Ветка | Куда деплоится |
-|-------|----------------|
-| `beget` | VPS Beget (авто по SSH) |
-| `master` | GitHub Pages (если включено) |
+| Ветка | Куда |
+|-------|------|
+| `beget` | VPS Beget (авто) |
+| `master` | GitHub Pages |
 
-Для продакшена на Beget работай в **`beget`**.
+Для Beget работай в ветке **`beget`**.
+
+---
+
+## VPS (уже настроено)
+
+- nginx → `/var/www/russo`
+- ufw: 22, 80, 443
+
+Если Actions падает с **timeout** — на сервере должен быть открыт **SSH порт 22** для входящих (ufw allow 22). GitHub подключается с интернета, не с твоего ПК.

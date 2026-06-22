@@ -23,14 +23,11 @@ jobs:
         env:
           BEGET_HOST: ${{ secrets.BEGET_HOST }}
           BEGET_USER: ${{ secrets.BEGET_USER }}
-          BEGET_SSH_KEY: ${{ secrets.BEGET_SSH_KEY }}
+          BEGET_PASSWORD: ${{ secrets.BEGET_PASSWORD }}
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$BEGET_SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$BEGET_HOST" >> ~/.ssh/known_hosts
-          rsync -avz --delete \
-            -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes" \
+          sudo apt-get update && sudo apt-get install -y sshpass
+          sshpass -p "$BEGET_PASSWORD" rsync -avz --delete \
+            -e "ssh -o StrictHostKeyChecking=no" \
             dist/ "${BEGET_USER}@${BEGET_HOST}:/var/www/russo/"
 
       - name: Fix permissions on VPS
@@ -38,7 +35,8 @@ jobs:
         with:
           host: ${{ secrets.BEGET_HOST }}
           username: ${{ secrets.BEGET_USER }}
-          key: ${{ secrets.BEGET_SSH_KEY }}
+          password: ${{ secrets.BEGET_PASSWORD }}
+          port: 22
           script: |
             chown -R www-data:www-data /var/www/russo
             rm -f /var/www/russo/models/shkaf_full.glb
