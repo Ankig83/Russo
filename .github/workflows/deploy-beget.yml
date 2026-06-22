@@ -1,0 +1,44 @@
+name: Deploy to Beget VPS
+
+on:
+  push:
+    branches: [beget]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Upload dist to VPS
+        env:
+          BEGET_HOST: ${{ secrets.BEGET_HOST }}
+          BEGET_USER: ${{ secrets.BEGET_USER }}
+          BEGET_SSH_KEY: ${{ secrets.BEGET_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$BEGET_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$BEGET_HOST" >> ~/.ssh/known_hosts
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes" \
+            dist/ "${BEGET_USER}@${BEGET_HOST}:/var/www/russo/"
+
+      - name: Fix permissions on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.BEGET_HOST }}
+          username: ${{ secrets.BEGET_USER }}
+          key: ${{ secrets.BEGET_SSH_KEY }}
+          script: |
+            chown -R www-data:www-data /var/www/russo
+            rm -f /var/www/russo/models/shkaf_full.glb

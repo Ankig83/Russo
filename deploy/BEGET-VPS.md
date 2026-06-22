@@ -1,63 +1,89 @@
 # Деплой на VPS Beget (ветка `beget`)
 
-Статический сайт: `npm run build` → папка `dist/` → nginx.
+**Автоматически:** push в ветку `beget` → GitHub Actions собирает `dist/` и заливает на сервер по SSH.
+
+Ручная загрузка файлов **не нужна**.
+
+---
 
 ## 1. На VPS (один раз)
 
-```bash
-# Ubuntu / Debian
-sudo apt update && sudo apt install -y nginx
-
-sudo mkdir -p /var/www/russo
-sudo chown -R $USER:www-data /var/www/russo
-```
-
-Скопируй конфиг nginx (замени `YOUR_DOMAIN.ru`):
+nginx, папка, ufw — как уже настроено:
 
 ```bash
-sudo cp deploy/nginx-russo.conf /etc/nginx/sites-available/russo
-sudo ln -sf /etc/nginx/sites-available/russo /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+mkdir -p /var/www/russo
+chown -R www-data:www-data /var/www/russo
 ```
 
-SSL (Let's Encrypt):
+---
+
+## 2. SSH-ключ для GitHub Actions (один раз)
+
+### На своём ПК (PowerShell)
+
+```powershell
+ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\beget_deploy -N '""'
+```
+
+Появятся:
+- `beget_deploy` — приватный (в GitHub Secrets)
+- `beget_deploy.pub` — публичный (на сервер)
+
+### Публичный ключ на сервер (VNC)
 
 ```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d YOUR_DOMAIN.ru -d www.YOUR_DOMAIN.ru
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+nano ~/.ssh/authorized_keys
 ```
 
-В панели Beget: привяжи домен к IP VPS (A-запись `@` и `www`).
+Вставь **одну строку** из `beget_deploy.pub`, сохрани.
 
-## 2. С локального ПК (ветка beget)
+```bash
+chmod 600 ~/.ssh/authorized_keys
+```
+
+---
+
+## 3. Секреты в GitHub
+
+Репозиторий **Ankig83/Russo** → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+
+| Имя | Значение |
+|-----|----------|
+| `BEGET_HOST` | `93.189.229.230` |
+| `BEGET_USER` | `root` |
+| `BEGET_SSH_KEY` | весь текст файла `beget_deploy` (приватный ключ) |
+
+---
+
+## 4. Как деплоить дальше
 
 ```bash
 git checkout beget
-npm ci
-npm run build
+# правки...
+git add .
+git commit -m "..."
+git push origin beget
 ```
 
-Вариант A — скрипт (нужен SSH-ключ на VPS):
+GitHub → **Actions** → **Deploy to Beget VPS** — зелёная галочка = сайт обновлён.
 
-```bash
-export DEPLOY_HOST=user@IP_ВАШЕГО_VPS
-export DEPLOY_PATH=/var/www/russo
-bash deploy/deploy.sh
-```
+Или в Actions нажми **Run workflow** вручную.
 
-Вариант B — вручную через FileZilla / WinSCP: залей **содержимое** `dist/` в `/var/www/russo/`.
+---
 
-## 3. Проверка
+## 5. Проверка
 
-- `https://YOUR_DOMAIN.ru/` — главная с 3D-шкафом
-- `https://YOUR_DOMAIN.ru/about` — без 404 (nginx `try_files`)
+`http://93.189.229.230` — шкаф должен открываться.
 
-## Отличия от `master`
+---
 
-| | master | beget |
-|---|---|---|
-| base URL | `/Russo/` на GitHub Pages | `/` в корне домена |
-| роутер | HashRouter на GH Pages | BrowserRouter |
-| деплой | GitHub Actions → gh-pages | nginx на VPS |
+## Ветки
 
-Для продакшена на Beget всегда работай в ветке **beget**.
+| Ветка | Куда деплоится |
+|-------|----------------|
+| `beget` | VPS Beget (авто по SSH) |
+| `master` | GitHub Pages (если включено) |
+
+Для продакшена на Beget работай в **`beget`**.
