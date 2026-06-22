@@ -30,12 +30,12 @@ const ORBIT_MIN_POLAR = 0.12 // почти вид сверху
 const ORBIT_MAX_POLAR = Math.PI / 2.35 // не опускаем камеру ниже горизонта шкафа
 const ORBIT_PAN_SPEED = 0.65
 
-function CanvasLoader({ isMobile }) {
-  const { active, progress } = useProgress()
+function CanvasLoader() {
+  const { active } = useProgress()
   if (!active) return null
   return (
     <div className="pointer-events-none absolute inset-0 z-[5]">
-      <Loader progress={progress} isMobile={isMobile} />
+      <Loader />
     </div>
   )
 }
@@ -85,16 +85,12 @@ export default function Scene() {
 
   return (
     <div className="absolute inset-0 h-full w-full" style={STUDIO_BG_STYLE}>
-      <CanvasLoader isMobile={isMobile} />
+      <CanvasLoader />
 
       <Canvas
-        shadows={!isMobile}
-        dpr={isMobile ? 1 : [1, 2]}
+        shadows
         camera={{ fov: 42, near: 0.05, far: 200, position: [0, 3.5, 11] }}
-        gl={{
-          antialias: !isMobile,
-          powerPreference: isMobile ? 'default' : 'high-performance',
-        }}
+        gl={{ powerPreference: 'high-performance', antialias: true }}
         onCreated={handleCanvasCreated}
         style={{
           width: '100vw',
@@ -139,14 +135,14 @@ export default function Scene() {
         <Suspense fallback={null}>
           <EnableShadows />
           <group scale={scale}>
-            <Shkaf sceneScale={scale} isMobile={isMobile} />
+            <Shkaf sceneScale={scale} />
           </group>
         </Suspense>
 
         {/* Фон вне группы масштабирования — фиксированные мировые координаты */}
-        <StudioBackdrop lite={isMobile} />
+        <StudioBackdrop />
 
-        {!USE_GLB_ENVIRONMENT && !isMobile && (
+        {!USE_GLB_ENVIRONMENT && (
           <Suspense fallback={null}>
             <StudioEnvironment />
           </Suspense>

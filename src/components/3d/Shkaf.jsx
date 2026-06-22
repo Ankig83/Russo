@@ -133,7 +133,7 @@ const DRAG_THRESHOLD_PX = 5
 /** Акцентные детали — кожаные ручки, ободок, береста (124_ = планка, не акцент) */
 const ACCENT_MESH_NAMES = new Set(['145_', '17_', '19_', 'ручка_левая', 'ручка_правая'])
 
-export default function Shkaf({ sceneScale = 1, isMobile = false }) {
+export default function Shkaf({ sceneScale = 1 }) {
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
   const rootRef = useRef()
   const leftDoorRef = useRef()
@@ -533,11 +533,11 @@ export default function Shkaf({ sceneScale = 1, isMobile = false }) {
       ))}
 
       <directionalLight
-        castShadow={!isMobile}
+        castShadow
         color={STUDIO_LIGHT_COLOR}
         intensity={KEY_LIGHT_INTENSITY}
         position={[center.x + 2, center.y + KEY_LIGHT_HEIGHT, center.z + 4]}
-        shadow-mapSize={isMobile ? [256, 256] : [SHADOW_MAP_SIZE, SHADOW_MAP_SIZE]}
+        shadow-mapSize={[SHADOW_MAP_SIZE, SHADOW_MAP_SIZE]}
         shadow-camera-far={SHADOW_CAMERA_FAR}
         shadow-camera-left={-SHADOW_CAMERA_SIZE}
         shadow-camera-right={SHADOW_CAMERA_SIZE}
@@ -549,18 +549,16 @@ export default function Shkaf({ sceneScale = 1, isMobile = false }) {
         <object3D position={[center.x, center.y, center.z]} />
       </directionalLight>
 
-      {!isMobile && (
-        <ContactShadows
-          position={[center.x, alignedFloorY + 0.01, center.z]}
-          opacity={CONTACT_SHADOW_OPACITY}
-          scale={Math.max(size.x, size.z) * 1.8}
-          blur={CONTACT_SHADOW_BLUR}
-          far={CONTACT_SHADOW_FAR}
-          color="#000000"
-          frames={1}
-          resolution={256}
-        />
-      )}
+      <ContactShadows
+        position={[center.x, alignedFloorY + 0.01, center.z]}
+        opacity={CONTACT_SHADOW_OPACITY}
+        scale={Math.max(size.x, size.z) * 1.8}
+        blur={CONTACT_SHADOW_BLUR}
+        far={CONTACT_SHADOW_FAR}
+        color="#000000"
+        frames={1}
+        resolution={256}
+      />
 
       <FitCamera object={model} sceneScale={sceneScale} placementY={placementY} />
     </group>
