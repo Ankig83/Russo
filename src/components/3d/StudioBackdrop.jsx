@@ -187,10 +187,11 @@ function makeCenterWallGeo(floorY) {
   return geo
 }
 
-function CenterMirrorFloor({ floorY }) {
+function CenterMirrorFloor({ floorY, lite = false }) {
   const zCenter = WALL_Z + FLOOR_D / 2
 
   const reflector = useMemo(() => {
+    if (lite) return null
     const geo = new THREE.PlaneGeometry(CENTER_W, FLOOR_D)
     const mirror = new Reflector(geo, {
       clipBias: 0.003,
@@ -201,12 +202,22 @@ function CenterMirrorFloor({ floorY }) {
     mirror.rotation.x = -Math.PI / 2
     mirror.position.set(0, floorY + 0.004, zCenter)
     return mirror
-  }, [floorY, zCenter])
+  }, [floorY, zCenter, lite])
 
   useEffect(() => () => {
+    if (!reflector) return
     reflector.geometry.dispose()
     reflector.material.dispose()
   }, [reflector])
+
+  if (lite) {
+    return (
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, floorY + 0.004, zCenter]}>
+        <planeGeometry args={[CENTER_W, FLOOR_D]} />
+        <meshStandardMaterial color="#141414" roughness={0.2} metalness={0.75} />
+      </mesh>
+    )
+  }
 
   return <primitive object={reflector} />
 }
@@ -256,7 +267,7 @@ function AluminumMaterial({ map, normalMap }) {
   )
 }
 
-export default function StudioBackdrop({ floorY = STUDIO_FLOOR_Y }) {
+export default function StudioBackdrop({ floorY = STUDIO_FLOOR_Y, lite = false }) {
   const aluminumTextures = useMemo(() => createAluminumTextures(), [])
 
   useEffect(() => () => {
@@ -304,7 +315,7 @@ export default function StudioBackdrop({ floorY = STUDIO_FLOOR_Y }) {
         />
       </mesh>
 
-      <CenterMirrorFloor floorY={floorY} />
+      <CenterMirrorFloor floorY={floorY} lite={lite} />
 
       <mesh position={[0, seamY, WALL_Z + 0.01]}>
         <boxGeometry args={[240, 0.006, 0.02]} />
