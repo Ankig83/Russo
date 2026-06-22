@@ -4,5 +4,6 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
-  base: mode === 'production' ? '/Russo/' : '/',
+  // GitHub Pages: /Russo/  |  Cloudflare / локально: /
+  base: process.env.GITHUB_ACTIONS === 'true' ? '/Russo/' : '/',
 }))
