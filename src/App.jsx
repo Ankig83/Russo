@@ -1,4 +1,4 @@
-import { BrowserRouter, HashRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
 import Catalog from './pages/Catalog'
 import Portfolio from './pages/Portfolio'
@@ -13,11 +13,8 @@ import NotFound from './pages/NotFound'
 
 /** Корневой роутер приложения */
 export default function App() {
-  const isGhPages = import.meta.env.BASE_URL !== '/'
-  const Router = isGhPages ? HashRouter : BrowserRouter
-
   return (
-    <Router>
+    <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/catalog" element={<Catalog />} />
@@ -31,6 +28,6 @@ export default function App() {
         <Route path="/contacts" element={<Contacts />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
-    </Router>
+    </BrowserRouter>
   )
 }
