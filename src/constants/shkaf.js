@@ -23,9 +23,9 @@ export const DRAWER_PULL_DISTANCE = 0.4
 export const DRAWER_OPEN_DURATION = 0.6
 export const NAVIGATE_DELAY_MS = 400
 
-/** Масштаб на мобильных */
+/** Масштаб сцены — 1 на всех устройствах (одинаковая композиция с фризом и стеной) */
 export const DESKTOP_SCALE = 1
-export const MOBILE_SCALE = 0.75
+export const MOBILE_SCALE = 1
 
 /** Цвета материалов */
 export const COLOR_BODY = '#3d2b1f'

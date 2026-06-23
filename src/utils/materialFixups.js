@@ -17,13 +17,13 @@ export const PROCEDURAL_MATERIAL_FIXUPS = {
     envMapIntensity: 1.1,
     normalScale: 2.0,
   },
-  // Ножки шкафа
+  // Ножки шкафа — та же текстура, что у дверей (Oxidized Copper)
   M_BlackCopper_v3: {
-    sourceMaterialName: 'Rough copper metal',
-    color: '#1c1814',
-    metalness: 0.88,
-    roughness: 0.38,
-    envMapIntensity: 1.1,
+    sourceMaterialName: 'Scratched copper metal',
+    color: '#5a4a38',
+    metalness: 0.75,
+    roughness: 0.45,
+    envMapIntensity: 0.9,
   },
   // Основное полотно дверей — без текстуры в экспорте
   'Oxidized Copper': {

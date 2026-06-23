@@ -1,7 +1,37 @@
 import * as THREE from 'three'
-import { useMemo, useEffect } from 'react'
+import { Suspense, useMemo, useEffect } from 'react'
+import { useLoader } from '@react-three/fiber'
 import { Reflector } from 'three/addons/objects/Reflector.js'
-import { STUDIO_FLOOR_Y } from '../../constants/scene'
+import { STUDIO_FLOOR_Y, STUDIO_WALL_H, STUDIO_BG } from '../../constants/scene'
+import ExhibitionTrackLights from './ExhibitionTrackLights'
+import ExhibitionOverhead from './ExhibitionOverhead'
+
+const BRAND_LOGO_WALL = `${import.meta.env.BASE_URL}assets/brand/russo-11.png?v=11`
+
+/**
+ * Золотой знак на чёрной полосе за шкафом — РУССО-11.png
+ * LOGO_WALL_WIDTH_FRAC — ширина (доля от чёрной полосы CENTER_W)
+ * LOGO_WALL_SCALE       — доп. масштаб
+ * LOGO_WALL_Y_FRAC      — высота центра: 0 = пол, 1 = потолок стены
+ * LOGO_WALL_Z_OFFSET    — выдвиг от стены к камере
+ * (только StudioBackdrop — на reference-studio правь scene.js → LOGO_WALL_Y_FRAC)
+ */
+const LOGO_WALL_WIDTH_FRAC = 0.98
+const LOGO_WALL_SCALE = 0.58
+const LOGO_WALL_Y_FRAC = 0.55
+const LOGO_WALL_Z_OFFSET = 0.8
+
+/** Обрезка текстуры РУССО-11.png (2481×2481) — только вертикальный знак */
+const LOGO_WALL_TEX = { x: 641, y: 237, w: 1199, h: 2007, srcW: 2481, srcH: 2481 }
+const LOGO_WALL_ASPECT = LOGO_WALL_TEX.w / LOGO_WALL_TEX.h
+
+function applyLogoWallCrop(texture) {
+  const { x, y, w, h, srcW, srcH } = LOGO_WALL_TEX
+  texture.wrapS = THREE.ClampToEdgeWrapping
+  texture.wrapT = THREE.ClampToEdgeWrapping
+  texture.repeat.set(w / srcW, h / srcH)
+  texture.offset.set(x / srcW, (srcH - y - h) / srcH)
+}
 
 /**
  * Студийный фон — L-полосы пол→стена.
@@ -10,7 +40,7 @@ import { STUDIO_FLOOR_Y } from '../../constants/scene'
 
 const WALL_Z = -7
 const FLOOR_D = 28
-const WALL_H = 18
+const WALL_H = STUDIO_WALL_H
 
 const CENTER_X0 = -1.5
 const CENTER_X1 = 1.5
@@ -196,7 +226,7 @@ function CenterMirrorFloor({ floorY }) {
       clipBias: 0.003,
       textureWidth: 1024,
       textureHeight: 1024,
-      color: 0x0a0a0a,
+      color: 0x040404,
     })
     mirror.rotation.x = -Math.PI / 2
     mirror.position.set(0, floorY + 0.004, zCenter)
@@ -211,19 +241,43 @@ function CenterMirrorFloor({ floorY }) {
   return <primitive object={reflector} />
 }
 
-function BackdropSpot({ floorY }) {
+function BrandWallDecal({ floorY, map, z, renderOrder }) {
+  const texture = useLoader(THREE.TextureLoader, map)
+  texture.colorSpace = THREE.SRGBColorSpace
+  applyLogoWallCrop(texture)
+
+  const stripeW = CENTER_W * LOGO_WALL_WIDTH_FRAC * LOGO_WALL_SCALE
+  const stripeH = stripeW / LOGO_WALL_ASPECT
+  const y = floorY + WALL_H * LOGO_WALL_Y_FRAC
+
   return (
-    <spotLight
-      position={[0, floorY + WALL_H + 3, 5]}
-      color="#fffaf0"
-      intensity={0.55}
-      angle={0.42}
-      penumbra={0.85}
-      distance={35}
-      decay={2}
-    >
-      <object3D attach="target" position={[0, floorY + WALL_H * 0.45, WALL_Z + 0.1]} />
-    </spotLight>
+    <mesh position={[0, y, z]} renderOrder={renderOrder}>
+      <planeGeometry args={[stripeW, stripeH]} />
+      <meshBasicMaterial
+        map={texture}
+        transparent
+        alphaTest={0.005}
+        toneMapped={false}
+        depthWrite={false}
+        depthTest
+        side={THREE.DoubleSide}
+        polygonOffset
+        polygonOffsetFactor={-4}
+        polygonOffsetUnits={-4}
+        blending={THREE.NormalBlending}
+      />
+    </mesh>
+  )
+}
+
+function BackWallLogo({ floorY }) {
+  return (
+    <BrandWallDecal
+      floorY={floorY}
+      map={BRAND_LOGO_WALL}
+      z={WALL_Z + LOGO_WALL_Z_OFFSET}
+      renderOrder={100}
+    />
   )
 }
 
@@ -276,6 +330,8 @@ export default function StudioBackdrop({ floorY = STUDIO_FLOOR_Y }) {
 
   const centerWallGeo = useMemo(() => makeCenterWallGeo(floorY), [floorY])
   const seamY = floorY + 0.003
+  const ceilingY = floorY + WALL_H
+  const ceilingZ = WALL_Z + FLOOR_D / 2
 
   return (
     <group>
@@ -295,16 +351,32 @@ export default function StudioBackdrop({ floorY = STUDIO_FLOOR_Y }) {
       <mesh geometry={centerWallGeo} receiveShadow>
         <meshPhysicalMaterial
           color="#050505"
-          roughness={0.04}
-          metalness={0.9}
-          envMapIntensity={2.5}
-          clearcoat={1}
-          clearcoatRoughness={0.02}
+          roughness={0.16}
+          metalness={0.62}
+          envMapIntensity={1.15}
+          clearcoat={0.42}
+          clearcoatRoughness={0.18}
           side={THREE.DoubleSide}
         />
       </mesh>
 
+      {/* Потолок — закрывает серый фон над стенами при взгляде вверх */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, ceilingY, ceilingZ]}
+        receiveShadow
+      >
+        <planeGeometry args={[240, FLOOR_D + 24]} />
+        <meshStandardMaterial color={STUDIO_BG} roughness={0.95} metalness={0} side={THREE.DoubleSide} />
+      </mesh>
+
       <CenterMirrorFloor floorY={floorY} />
+
+      <Suspense fallback={null}>
+        <BackWallLogo floorY={floorY} />
+      </Suspense>
+
+      <ExhibitionOverhead floorY={floorY} wallH={WALL_H} />
 
       <mesh position={[0, seamY, WALL_Z + 0.01]}>
         <boxGeometry args={[240, 0.006, 0.02]} />
@@ -315,8 +387,6 @@ export default function StudioBackdrop({ floorY = STUDIO_FLOOR_Y }) {
         <planeGeometry args={[18, 0.8]} />
         <meshBasicMaterial color="#000000" transparent opacity={0.12} depthWrite={false} />
       </mesh>
-
-      <BackdropSpot floorY={floorY} />
     </group>
   )
 }

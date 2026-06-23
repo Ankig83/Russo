@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useMemo } from 'react'
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useThree } from '@react-three/fiber'
 import { useGLTF, ContactShadows } from '@react-three/drei'
@@ -24,7 +24,7 @@ import {
   DRAWER_OPEN_DURATION,
   NAVIGATE_DELAY_MS,
 } from '../../constants/shkaf'
-import { STUDIO_LIGHT_COLOR, STUDIO_FLOOR_Y } from '../../constants/scene'
+import { STUDIO_LIGHT_COLOR, STUDIO_FLOOR_Y, SHKAF_Z_OFFSET, SHKAF_FLOOR_LIFT } from '../../constants/scene'
 import { useShkafStore } from '../../store/shkafStore'
 import FitCamera from './FitCamera'
 import { getCabinetBounds, getFloorY, findByName } from '../../utils/cabinetBounds'
@@ -153,12 +153,13 @@ export default function Shkaf({ sceneScale = 1 }) {
   const shkafGroup = useMemo(() => findByName(model, SHKAF_ROOT_NAME), [model])
   const bounds = useMemo(() => getCabinetBounds(model, SHKAF_ROOT_NAME), [model])
   const floorY = useMemo(() => getFloorY(model, SHKAF_ROOT_NAME), [model])
-  const placementY = STUDIO_FLOOR_Y / sceneScale - floorY
+  const placementY = (STUDIO_FLOOR_Y + SHKAF_FLOOR_LIFT) / sceneScale - floorY
   const alignedFloorY = placementY + floorY
   const { center, size, box } = bounds
 
   // Скрыть декор HDRI-сцены — оставить только shkaf; настроить материалы
   const scenePrepared = useRef(null)
+  const [fitToken, setFitToken] = useState(0)
   useEffect(() => {
     if (scenePrepared.current === model.uuid) return
     scenePrepared.current = model.uuid
@@ -242,6 +243,8 @@ export default function Shkaf({ sceneScale = 1 }) {
         mat.needsUpdate = true
       })
     })
+
+    setFitToken((n) => n + 1)
   }, [model])
 
   // Запомнить закрытое положение дверей (rotation Z = 0 в Blender)
@@ -508,7 +511,7 @@ export default function Shkaf({ sceneScale = 1 }) {
   ]
 
   return (
-    <group ref={rootRef} position={[0, placementY, 0]}>
+    <group ref={rootRef} position={[0, placementY, SHKAF_Z_OFFSET]}>
       <primitive
         object={model}
         onPointerDown={handlePointerDown}
@@ -560,7 +563,7 @@ export default function Shkaf({ sceneScale = 1 }) {
         resolution={256}
       />
 
-      <FitCamera object={model} sceneScale={sceneScale} placementY={placementY} />
+      <FitCamera object={model} fitToken={fitToken} />
     </group>
   )
 }

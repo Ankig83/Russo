@@ -4,13 +4,13 @@ import { Environment, OrbitControls, useProgress } from '@react-three/drei'
 import * as THREE from 'three'
 import Shkaf from './Shkaf'
 import Loader from './Loader'
-import StudioBackdrop from './StudioBackdrop'
+import ReferenceBackdrop from './ReferenceBackdrop'
+import StudioCameraLimits from './StudioCameraLimits'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
 import {
   STUDIO_BG,
   STUDIO_BG_STYLE,
-  STUDIO_LIGHT_COLOR,
   STUDIO_FOG_NEAR,
   STUDIO_FOG_FAR,
 } from '../../constants/scene'
@@ -18,16 +18,13 @@ import { USE_GLB_ENVIRONMENT } from '../../constants/shkafNodes'
 
 Environment.preload?.({ preset: 'studio' })
 
-/** Освещение */
-const AMBIENT_INTENSITY = 0.35
-const FILL_LIGHT_INTENSITY = 0.4
-const FILL_LIGHT_POSITION = [-5, 4, -3]
-const RIM_LIGHT_INTENSITY = 0.3
-const RIM_LIGHT_POSITION = [3, 6, -5]
+/** Мягкий свет слева-сверху — как на референсе */
+const KEY_LIGHT_INTENSITY = 1.15
+const KEY_LIGHT_POSITION = [-5.5, 7.5, 5.5]
+const FILL_LIGHT_INTENSITY = 0.32
+const FILL_LIGHT_POSITION = [4.5, 3.5, 6]
+const AMBIENT_INTENSITY = 0.48
 
-/** OrbitControls — широкий вертикальный диапазон + панорамирование при зуме */
-const ORBIT_MIN_POLAR = 0.12 // почти вид сверху
-const ORBIT_MAX_POLAR = Math.PI / 2.35 // не опускаем камеру ниже горизонта шкафа
 const ORBIT_PAN_SPEED = 0.65
 
 function CanvasLoader() {
@@ -42,12 +39,8 @@ function CanvasLoader() {
 
 function handleCanvasCreated({ gl, scene }) {
   gl.toneMapping = THREE.ACESFilmicToneMapping
-  // экспозиция снижена — иначе студийный HDR перветяет кожу и дерево
-  gl.toneMappingExposure = 0.9
-
-  if (!USE_GLB_ENVIRONMENT) {
-    scene.background = new THREE.Color(STUDIO_BG)
-  }
+  gl.toneMappingExposure = 0.88
+  scene.background = new THREE.Color(STUDIO_BG)
 
   gl.domElement.addEventListener('webglcontextlost', (e) => {
     e.preventDefault()
@@ -55,7 +48,6 @@ function handleCanvasCreated({ gl, scene }) {
   })
 }
 
-/** castShadow / receiveShadow после загрузки модели */
 function EnableShadows() {
   const scene = useThree((s) => s.scene)
   const done = useRef(false)
@@ -74,11 +66,11 @@ function EnableShadows() {
   return null
 }
 
-function StudioEnvironment() {
-  return <Environment preset="studio" background={false} environmentIntensity={0.45} />
+function ReferenceEnvironment() {
+  return <Environment preset="studio" background={false} environmentIntensity={0.42} />
 }
 
-/** Студийная 3D-сцена: шкаф + пол из GLB */
+/** Продуктовая студия по референсу */
 export default function Scene() {
   const isMobile = useIsMobile()
   const scale = isMobile ? MOBILE_SCALE : DESKTOP_SCALE
@@ -89,48 +81,64 @@ export default function Scene() {
 
       <Canvas
         shadows
-        camera={{ fov: 42, near: 0.05, far: 200, position: [0, 3.5, 11] }}
+        camera={{ fov: 38, near: 0.05, far: 120, position: [0, 1.2, 6] }}
         gl={{ powerPreference: 'high-performance', antialias: true }}
         onCreated={handleCanvasCreated}
         style={{
           width: '100vw',
           height: '100vh',
           display: 'block',
+          touchAction: 'none',
         }}
       >
-        {!USE_GLB_ENVIRONMENT && <color attach="background" args={[STUDIO_BG]} />}
+        <color attach="background" args={[STUDIO_BG]} />
         <fog attach="fog" args={[STUDIO_BG, STUDIO_FOG_NEAR, STUDIO_FOG_FAR]} />
 
         <ambientLight intensity={AMBIENT_INTENSITY} />
-        <hemisphereLight color="#ffffff" groundColor="#b0b0b0" intensity={0.35} />
-        {/* Заполняющий свет слева-сзади */}
+        <hemisphereLight color="#f2f2f2" groundColor="#9a9a9a" intensity={0.38} />
+
         <directionalLight
-          color={STUDIO_LIGHT_COLOR}
+          castShadow
+          color="#fff6ee"
+          intensity={KEY_LIGHT_INTENSITY}
+          position={KEY_LIGHT_POSITION}
+          shadow-mapSize={[2048, 2048]}
+          shadow-camera-far={40}
+          shadow-camera-left={-10}
+          shadow-camera-right={10}
+          shadow-camera-top={10}
+          shadow-camera-bottom={-10}
+          shadow-bias={-0.00015}
+          shadow-normalBias={0.02}
+        />
+
+        <directionalLight
+          color="#e8e8e8"
           intensity={FILL_LIGHT_INTENSITY}
           position={FILL_LIGHT_POSITION}
-        />
-        {/* Контровой свет справа-сзади — создаёт объём */}
-        <directionalLight
-          color="#fff5e6"
-          intensity={RIM_LIGHT_INTENSITY}
-          position={RIM_LIGHT_POSITION}
         />
 
         <OrbitControls
           makeDefault
           enablePan={!isMobile}
           enableRotate
-          minPolarAngle={ORBIT_MIN_POLAR}
-          maxPolarAngle={ORBIT_MAX_POLAR}
           panSpeed={ORBIT_PAN_SPEED}
-          enableZoom={!isMobile}
+          enableZoom
+          zoomSpeed={isMobile ? 1 : 1.1}
+          minDistance={0.1}
+          maxDistance={500}
           mouseButtons={{
             LEFT: THREE.MOUSE.ROTATE,
             MIDDLE: THREE.MOUSE.DOLLY,
             RIGHT: THREE.MOUSE.PAN,
           }}
-          touches={{ ONE: 0, TWO: 2 }}
+          touches={{
+            ONE: THREE.TOUCH.ROTATE,
+            TWO: THREE.TOUCH.DOLLY_PAN,
+          }}
         />
+
+        <StudioCameraLimits />
 
         <Suspense fallback={null}>
           <EnableShadows />
@@ -139,12 +147,11 @@ export default function Scene() {
           </group>
         </Suspense>
 
-        {/* Фон вне группы масштабирования — фиксированные мировые координаты */}
-        <StudioBackdrop />
+        <ReferenceBackdrop />
 
         {!USE_GLB_ENVIRONMENT && (
           <Suspense fallback={null}>
-            <StudioEnvironment />
+            <ReferenceEnvironment />
           </Suspense>
         )}
       </Canvas>
