@@ -24,7 +24,9 @@ import {
   DRAWER_OPEN_DURATION,
   NAVIGATE_DELAY_MS,
 } from '../../constants/shkaf'
-import { STUDIO_LIGHT_COLOR, STUDIO_FLOOR_Y } from '../../constants/scene'
+import { STUDIO_FLOOR_Y, STUDIO_LIGHT_COLOR } from '../../constants/scene'
+import { useStudioAnchor } from '../../context/studioAnchor'
+import { USE_STUDIO_GLB, SHKAF_MOUNT_OFFSET } from '../../constants/studioScene'
 import { useShkafStore } from '../../store/shkafStore'
 import FitCamera from './FitCamera'
 import { getCabinetBounds, getFloorY, findByName } from '../../utils/cabinetBounds'
@@ -33,7 +35,7 @@ import {
   findDrawerSectionFromHit,
   getDrawerBodyName,
 } from '../../utils/drawerHit'
-import { applyProceduralMaterialFixups } from '../../utils/materialFixups'
+import { applyProceduralMaterialFixups, applyStudioMaterialTuning } from '../../utils/materialFixups'
 
 useGLTF.preload(SHKAF_MODEL_PATH)
 
@@ -52,8 +54,8 @@ const HOVER_WIGGLE_DURATION = 0.45
 const HOVER_EMISSIVE = '#c9a040'
 const HOVER_EMISSIVE_INTENSITY = 0.32
 
-/** Ящики без анимации выдвижения при hover — только подсветка (группа содержит лишнюю геометрию) */
-const HOVER_HIGHLIGHT_ONLY = new Set(['drawer_1'])
+/** Ящики без анимации выдвижения при hover — только подсветка */
+const HOVER_HIGHLIGHT_ONLY = new Set()
 
 /** Парные узлы (крышка ↔ корпус) */
 const PAIRED_DRAWER_NODES = new Set(Object.keys(DRAWER_LID_TO_BODY))
@@ -134,6 +136,7 @@ const DRAG_THRESHOLD_PX = 5
 const ACCENT_MESH_NAMES = new Set(['145_', '17_', '19_', 'ручка_левая', 'ручка_правая'])
 
 export default function Shkaf({ sceneScale = 1 }) {
+  const studioAnchor = useStudioAnchor()
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
   const rootRef = useRef()
   const leftDoorRef = useRef()
@@ -153,7 +156,12 @@ export default function Shkaf({ sceneScale = 1 }) {
   const shkafGroup = useMemo(() => findByName(model, SHKAF_ROOT_NAME), [model])
   const bounds = useMemo(() => getCabinetBounds(model, SHKAF_ROOT_NAME), [model])
   const floorY = useMemo(() => getFloorY(model, SHKAF_ROOT_NAME), [model])
-  const placementY = STUDIO_FLOOR_Y / sceneScale - floorY
+  const mount = USE_STUDIO_GLB && studioAnchor.ready ? studioAnchor : null
+  const studioFloorY = mount?.floorY ?? STUDIO_FLOOR_Y
+  const mountX = (mount?.position.x ?? 0) + SHKAF_MOUNT_OFFSET[0]
+  const mountZ = (mount?.position.z ?? 0) + SHKAF_MOUNT_OFFSET[2]
+  const placementY =
+    (studioFloorY + SHKAF_MOUNT_OFFSET[1]) / sceneScale - floorY
   const alignedFloorY = placementY + floorY
   const { center, size, box } = bounds
 
@@ -171,14 +179,8 @@ export default function Shkaf({ sceneScale = 1 }) {
 
     // Ножки: M_BlackCopper_v3 — процедурный материал без карт в GLB
     applyProceduralMaterialFixups(model)
+    applyStudioMaterialTuning(model, 0.28)
     ensureUniqueMaterials(model)
-
-    // drawe_3 > drawer_3 → drawer_3.1 (как drawer_4 / drawer_4.1)
-    const drawe3 = model.getObjectByName('drawe_3')
-    const innerDrawer3 = drawe3?.getObjectByName?.('drawer_3') ?? model.getObjectByName('drawer_3')
-    if (innerDrawer3?.parent?.name === 'drawe_3') {
-      innerDrawer3.name = 'drawer_3.1'
-    }
 
     INACTIVE_DRAWER_NODES.forEach((name) => {
       const node = model.getObjectByName(name)
@@ -187,7 +189,7 @@ export default function Shkaf({ sceneScale = 1 }) {
       })
     })
 
-    // Планка 124_ — статичный декор, не часть ящика drawer_1
+    // Планка — статичный декор, не часть ящика
     const plank = model.getObjectByName('124_')
     const shkafRoot = model.getObjectByName(SHKAF_ROOT_NAME)
     if (plank && shkafRoot) {
@@ -216,26 +218,12 @@ export default function Shkaf({ sceneScale = 1 }) {
       materials.forEach((mat) => {
         if (!mat) return
 
-        // envMapIntensity умеренный — иначе яркий студийный HDR даёт перветку
-        mat.envMapIntensity = 0.85
-
-        // Нормали — полная сила
-        if (mat.normalMap) {
-          mat.normalScale = mat.normalScale ?? new THREE.Vector2(1, 1)
-          mat.normalScale.set(1, 1)
-        }
-
-        // Процедурные материалы без текстур — чуть снизить roughness для блеска
-        if (!mat.map && mat.isMeshStandardMaterial) {
-          mat.roughness = Math.min(mat.roughness ?? 1, 0.6)
-        }
-
-        // Акцентные детали (ручки, береста, ободок) — максимальный рельеф
+        // Акцентные детали (ручки, береста, ободок) — чуть сильнее рельеф, без лишнего блеска
         if (ACCENT_MESH_NAMES.has(child.name)) {
-          mat.envMapIntensity = 1.2
+          mat.envMapIntensity = Math.min(mat.envMapIntensity ?? 0.35, 0.45)
           if (mat.normalMap) {
             mat.normalScale = mat.normalScale ?? new THREE.Vector2(1, 1)
-            mat.normalScale.set(2.0, 2.0)
+            mat.normalScale.set(1.6, 1.6)
           }
         }
 
@@ -334,14 +322,12 @@ export default function Shkaf({ sceneScale = 1 }) {
     meshMaterialBackup.current.clear()
   }, [])
 
-  const highlightDrawerMeshes = useCallback((nodes, sectionId) => {
+  const highlightDrawerMeshes = useCallback((nodes) => {
     nodes.forEach((node) => {
       node.traverse((child) => {
         if (!child.isMesh) return
         if (isUnderInactiveDrawerNode(child)) return
         if (INACTIVE_MESH_NAMES.has(child.name)) return
-        // Корпус drawer_1 (149_.007) — общий mat с цоколем drawe_3, только дочерние детали
-        if (sectionId === 'drawer_1' && child === node) return
         if (meshMaterialBackup.current.has(child)) return
 
         const original = child.material
@@ -406,7 +392,7 @@ export default function Shkaf({ sceneScale = 1 }) {
         })
       }
 
-      highlightDrawerMeshes(nodes, sectionId)
+      highlightDrawerMeshes(nodes)
       document.body.style.cursor = 'pointer'
     },
     [model, resetHoveredDrawerPositions, restoreMeshMaterials, highlightDrawerMeshes],
@@ -508,7 +494,7 @@ export default function Shkaf({ sceneScale = 1 }) {
   ]
 
   return (
-    <group ref={rootRef} position={[0, placementY, 0]}>
+    <group ref={rootRef} position={[mountX / sceneScale, placementY, mountZ / sceneScale]}>
       <primitive
         object={model}
         onPointerDown={handlePointerDown}
@@ -532,22 +518,24 @@ export default function Shkaf({ sceneScale = 1 }) {
         </spotLight>
       ))}
 
-      <directionalLight
-        castShadow
-        color={STUDIO_LIGHT_COLOR}
-        intensity={KEY_LIGHT_INTENSITY}
-        position={[center.x + 2, center.y + KEY_LIGHT_HEIGHT, center.z + 4]}
-        shadow-mapSize={[SHADOW_MAP_SIZE, SHADOW_MAP_SIZE]}
-        shadow-camera-far={SHADOW_CAMERA_FAR}
-        shadow-camera-left={-SHADOW_CAMERA_SIZE}
-        shadow-camera-right={SHADOW_CAMERA_SIZE}
-        shadow-camera-top={SHADOW_CAMERA_SIZE}
-        shadow-camera-bottom={-SHADOW_CAMERA_SIZE}
-        shadow-bias={-0.0001}
-        shadow-normalBias={0.04}
-      >
-        <object3D position={[center.x, center.y, center.z]} />
-      </directionalLight>
+      {!USE_STUDIO_GLB && (
+        <directionalLight
+          castShadow
+          color={STUDIO_LIGHT_COLOR}
+          intensity={KEY_LIGHT_INTENSITY}
+          position={[center.x + 2, center.y + KEY_LIGHT_HEIGHT, center.z + 4]}
+          shadow-mapSize={[SHADOW_MAP_SIZE, SHADOW_MAP_SIZE]}
+          shadow-camera-far={SHADOW_CAMERA_FAR}
+          shadow-camera-left={-SHADOW_CAMERA_SIZE}
+          shadow-camera-right={SHADOW_CAMERA_SIZE}
+          shadow-camera-top={SHADOW_CAMERA_SIZE}
+          shadow-camera-bottom={-SHADOW_CAMERA_SIZE}
+          shadow-bias={-0.0001}
+          shadow-normalBias={0.04}
+        >
+          <object3D position={[center.x, center.y, center.z]} />
+        </directionalLight>
+      )}
 
       <ContactShadows
         position={[center.x, alignedFloorY + 0.01, center.z]}

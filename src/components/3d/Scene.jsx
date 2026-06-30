@@ -5,14 +5,34 @@ import * as THREE from 'three'
 import Shkaf from './Shkaf'
 import Loader from './Loader'
 import StudioBackdrop from './StudioBackdrop'
+import StudioScene from './StudioScene'
+import {
+  USE_STUDIO_GLB,
+  STUDIO_ENV_INTENSITY,
+  STUDIO_KEY_SPOT_INTENSITY,
+  STUDIO_KEY_SPOT_POSITION,
+  STUDIO_KEY_SPOT_TARGET,
+  STUDIO_KEY_SPOT_ANGLE,
+  STUDIO_KEY_SPOT_PENUMBRA,
+  STUDIO_RIM_INTENSITY,
+  STUDIO_RIM_POSITION,
+  STUDIO_HEMISPHERE_INTENSITY,
+  STUDIO_HEMISPHERE_SKY,
+  STUDIO_HEMISPHERE_GROUND,
+  STUDIO_AMBIENT_INTENSITY,
+  STUDIO_TONE_MAPPING_EXPOSURE,
+} from '../../constants/studioScene'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
 import {
   STUDIO_BG,
   STUDIO_BG_STYLE,
   STUDIO_LIGHT_COLOR,
+  STUDIO_CANVAS_BG,
   STUDIO_FOG_NEAR,
   STUDIO_FOG_FAR,
+  LEGACY_FOG_NEAR,
+  LEGACY_FOG_FAR,
 } from '../../constants/scene'
 import { USE_GLB_ENVIRONMENT } from '../../constants/shkafNodes'
 
@@ -42,11 +62,10 @@ function CanvasLoader() {
 
 function handleCanvasCreated({ gl, scene }) {
   gl.toneMapping = THREE.ACESFilmicToneMapping
-  // экспозиция снижена — иначе студийный HDR перветяет кожу и дерево
-  gl.toneMappingExposure = 0.9
+  gl.toneMappingExposure = USE_STUDIO_GLB ? STUDIO_TONE_MAPPING_EXPOSURE : 0.9
 
   if (!USE_GLB_ENVIRONMENT) {
-    scene.background = new THREE.Color(STUDIO_BG)
+    scene.background = new THREE.Color(USE_STUDIO_GLB ? STUDIO_CANVAS_BG : STUDIO_BG)
   }
 
   gl.domElement.addEventListener('webglcontextlost', (e) => {
@@ -75,7 +94,13 @@ function EnableShadows() {
 }
 
 function StudioEnvironment() {
-  return <Environment preset="studio" background={false} environmentIntensity={0.45} />
+  return (
+    <Environment
+      preset="studio"
+      background={false}
+      environmentIntensity={USE_STUDIO_GLB ? STUDIO_ENV_INTENSITY : 0.45}
+    />
+  )
 }
 
 /** Студийная 3D-сцена: шкаф + пол из GLB */
@@ -84,7 +109,13 @@ export default function Scene() {
   const scale = isMobile ? MOBILE_SCALE : DESKTOP_SCALE
 
   return (
-    <div className="absolute inset-0 h-full w-full" style={STUDIO_BG_STYLE}>
+    <div
+      className="absolute inset-0 h-full w-full"
+      style={{
+        ...STUDIO_BG_STYLE,
+        background: USE_STUDIO_GLB ? STUDIO_CANVAS_BG : STUDIO_BG_STYLE.background,
+      }}
+    >
       <CanvasLoader />
 
       <Canvas
@@ -96,25 +127,65 @@ export default function Scene() {
           width: '100vw',
           height: '100vh',
           display: 'block',
+          background: USE_STUDIO_GLB ? STUDIO_CANVAS_BG : undefined,
         }}
       >
-        {!USE_GLB_ENVIRONMENT && <color attach="background" args={[STUDIO_BG]} />}
-        <fog attach="fog" args={[STUDIO_BG, STUDIO_FOG_NEAR, STUDIO_FOG_FAR]} />
+        {!USE_GLB_ENVIRONMENT && (
+          <color attach="background" args={[USE_STUDIO_GLB ? STUDIO_CANVAS_BG : STUDIO_BG]} />
+        )}
+        {USE_STUDIO_GLB ? (
+          <fog attach="fog" args={[STUDIO_CANVAS_BG, STUDIO_FOG_NEAR, STUDIO_FOG_FAR]} />
+        ) : (
+          <fog attach="fog" args={[STUDIO_BG, LEGACY_FOG_NEAR, LEGACY_FOG_FAR]} />
+        )}
 
-        <ambientLight intensity={AMBIENT_INTENSITY} />
-        <hemisphereLight color="#ffffff" groundColor="#b0b0b0" intensity={0.35} />
-        {/* Заполняющий свет слева-сзади */}
-        <directionalLight
-          color={STUDIO_LIGHT_COLOR}
-          intensity={FILL_LIGHT_INTENSITY}
-          position={FILL_LIGHT_POSITION}
-        />
-        {/* Контровой свет справа-сзади — создаёт объём */}
-        <directionalLight
-          color="#fff5e6"
-          intensity={RIM_LIGHT_INTENSITY}
-          position={RIM_LIGHT_POSITION}
-        />
+        {USE_STUDIO_GLB ? (
+          <>
+            <ambientLight intensity={STUDIO_AMBIENT_INTENSITY} />
+            <hemisphereLight
+              color={STUDIO_HEMISPHERE_SKY}
+              groundColor={STUDIO_HEMISPHERE_GROUND}
+              intensity={STUDIO_HEMISPHERE_INTENSITY}
+            />
+            <directionalLight
+              color="#fff8f0"
+              intensity={STUDIO_RIM_INTENSITY}
+              position={STUDIO_RIM_POSITION}
+            />
+            <spotLight
+              position={STUDIO_KEY_SPOT_POSITION}
+              angle={STUDIO_KEY_SPOT_ANGLE}
+              penumbra={STUDIO_KEY_SPOT_PENUMBRA}
+              intensity={STUDIO_KEY_SPOT_INTENSITY}
+              decay={2}
+              castShadow
+              shadow-mapSize={[2048, 2048]}
+              shadow-camera-near={0.5}
+              shadow-camera-far={30}
+              shadow-camera-left={-7}
+              shadow-camera-right={7}
+              shadow-camera-top={7}
+              shadow-camera-bottom={-7}
+            >
+              <object3D attach="target" position={STUDIO_KEY_SPOT_TARGET} />
+            </spotLight>
+          </>
+        ) : (
+          <>
+            <ambientLight intensity={AMBIENT_INTENSITY} />
+            <hemisphereLight color="#ffffff" groundColor="#b0b0b0" intensity={0.35} />
+            <directionalLight
+              color={STUDIO_LIGHT_COLOR}
+              intensity={FILL_LIGHT_INTENSITY}
+              position={FILL_LIGHT_POSITION}
+            />
+            <directionalLight
+              color="#fff5e6"
+              intensity={RIM_LIGHT_INTENSITY}
+              position={RIM_LIGHT_POSITION}
+            />
+          </>
+        )}
 
         <OrbitControls
           makeDefault
@@ -134,13 +205,20 @@ export default function Scene() {
 
         <Suspense fallback={null}>
           <EnableShadows />
-          <group scale={scale}>
-            <Shkaf sceneScale={scale} />
-          </group>
+          {USE_STUDIO_GLB ? (
+            <StudioScene>
+              <group scale={scale}>
+                <Shkaf sceneScale={scale} />
+              </group>
+            </StudioScene>
+          ) : (
+            <group scale={scale}>
+              <Shkaf sceneScale={scale} />
+            </group>
+          )}
         </Suspense>
 
-        {/* Фон вне группы масштабирования — фиксированные мировые координаты */}
-        <StudioBackdrop />
+        {!USE_STUDIO_GLB && <StudioBackdrop />}
 
         {!USE_GLB_ENVIRONMENT && (
           <Suspense fallback={null}>
