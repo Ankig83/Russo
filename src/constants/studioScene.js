@@ -1,41 +1,70 @@
-const assetBase = import.meta.env.BASE_URL
+// studioScene.js
+export const STUDIO = {
+  backdrop: {
+    topColor: '#2a2f38', // тёмно-серо-синий верх
+    midColor: '#4a5058', // светлее в зоне объекта
+    bottomColor: '#1a1d22', // тёмный низ (пол уходит в тень)
+    curveHeight: 9, // +~40% запас по высоте
+    curveRadius: 6, // +~40% — шире дуга, меньше виден стык при повороте
+    width: 14, // +~40% — боковые края не влезают в кадр
+    floorDepth: 7, // +~40% — пол уходит глубже за объект
+  },
+  camera: {
+    fov: 35, // 28 — телевик, сильно приближает; 35 — шире охват
+    position: [0, 1.1, 6], // было 3.2 — дальше от объекта; подбирай z колёсиком + console
+    target: [0, 1.0, 0],
+  },
+  /** Ограничения OrbitControls — витрина, не 360° */
+  orbit: {
+    minAzimuth: -0.42, // ~−24° влево от фронта
+    maxAzimuth: 0.42, // ~+24° вправо
+    minPolar: 1.22, // не слишком сверху (≈70° от вертикали)
+    maxPolar: 1.58, // не смотреть снизу (≈90°)
+    minDistance: 2,
+    maxDistance: 14,
+    enablePan: false,
+  },
+  lights: {
+    key: {
+      // off-axis: правее и выше камеры — градиент света/тени по фасаду
+      position: [3, 4, 1.8],
+      width: 2.8,
+      height: 3.5,
+      intensity: 11,
+      color: '#fff4e6',
+    },
+    rim: {
+      // контровой сзади-сверху — блик по кромке патины
+      position: [-2, 3.8, -4.5],
+      width: 2.8,
+      height: 3.5,
+      intensity: 11,
+      color: '#cfe0ff',
+    },
+    fill: {
+      position: [-2.5, 0.6, 3.5],
+      width: 2,
+      height: 2,
+      intensity: 0.9,
+      color: '#ffffff',
+    },
+    ambient: 0.05,
+  },
+  shadow: {
+    opacity: 0.62,
+    blur: 1.8,
+    far: 2,
+    resolution: 1024,
+  },
+  postprocessing: {
+    vignetteOffset: 0.35,
+    vignetteDarkness: 0.65,
+    contrast: 0.05,
+    saturation: -0.1,
+  },
+}
 
-export const USE_STUDIO_GLB = true
+export const USE_STUDIO_CAMERA = true
 
-export const STUDIO_MODEL_VERSION = '1'
-export const STUDIO_MODEL_PATH = `${assetBase}models/studio.glb?v=${STUDIO_MODEL_VERSION}`
-
-export const STUDIO_ANCHOR_NODE = 'shkaf_anchor'
-
-/** Смещение шкафа от shkaf_anchor (мир, +Z = к камере / под прожектор) */
-export const SHKAF_MOUNT_OFFSET = [0, 0, 2.8]
-
-/** HDR — отражения без «зеркала» на меди */
-export const STUDIO_ENV_INTENSITY = 0.1
-
-/**
- * Ключевой прожектор — сзади-сверху (как light_spot_main в studio.glb).
- * Свет идёт на пол и бока шкафа, не в лицо дверям (+Z к камере).
- */
-export const STUDIO_KEY_SPOT_INTENSITY = 220
-export const STUDIO_KEY_SPOT_POSITION = [0, 7, -4]
-export const STUDIO_KEY_SPOT_TARGET = [0, 0.15, 0.2]
-export const STUDIO_KEY_SPOT_ANGLE = 0.65
-export const STUDIO_KEY_SPOT_PENUMBRA = 0.88
-
-/** Рим слева сзади — контур, без фронтального блика */
-export const STUDIO_RIM_INTENSITY = 0.2
-export const STUDIO_RIM_POSITION = [-5, 5, -2]
-
-/** Hemisphere — общая яркость, почти без specular-hotspot */
-export const STUDIO_HEMISPHERE_INTENSITY = 0.5
-export const STUDIO_HEMISPHERE_SKY = '#ebe6dc'
-export const STUDIO_HEMISPHERE_GROUND = '#353230'
-
-export const STUDIO_AMBIENT_INTENSITY = 0.1
-
-/** Экспозиция — ярче сцена, блики контролирует угол света */
-export const STUDIO_TONE_MAPPING_EXPOSURE = 0.92
-
-/** Узлы studio.glb, которые не рендерим (стены / купол) */
-export const STUDIO_HIDDEN_NODES = new Set(['studio_backdrop'])
+/** Временно: лог позиции камеры в консоль после ручного зума OrbitControls */
+export const DEBUG_LOG_CAMERA_POSITION = true

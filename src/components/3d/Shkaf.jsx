@@ -1,16 +1,16 @@
 import { useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useThree } from '@react-three/fiber'
-import { useGLTF, ContactShadows } from '@react-three/drei'
+import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import gsap from 'gsap'
 import { drawerSections } from '../../constants/sections'
 import {
   SHKAF_MODEL_PATH,
   SHKAF_NODE_MAP,
-  USE_GLB_ENVIRONMENT,
   SHKAF_ROOT_NAME,
   HIDE_SCENE_DECOR,
+  DOOR_NORMAL_SCALE,
+  DOOR_SURFACE_MATERIALS,
   INACTIVE_DRAWER_NODES,
   INACTIVE_MESH_NAMES,
   DRAWER_LID_TO_BODY,
@@ -24,30 +24,18 @@ import {
   DRAWER_OPEN_DURATION,
   NAVIGATE_DELAY_MS,
 } from '../../constants/shkaf'
-import { STUDIO_FLOOR_Y, STUDIO_LIGHT_COLOR } from '../../constants/scene'
-import { useStudioAnchor } from '../../context/studioAnchor'
-import { USE_STUDIO_GLB, SHKAF_MOUNT_OFFSET } from '../../constants/studioScene'
 import { useShkafStore } from '../../store/shkafStore'
 import FitCamera from './FitCamera'
+import { USE_STUDIO_CAMERA } from '../../constants/studioScene'
 import { getCabinetBounds, getFloorY, findByName } from '../../utils/cabinetBounds'
 import {
   findDrawerNodeFromHit,
   findDrawerSectionFromHit,
   getDrawerBodyName,
 } from '../../utils/drawerHit'
-import { applyProceduralMaterialFixups, applyStudioMaterialTuning } from '../../utils/materialFixups'
+import { fixGltfTextureColorSpaces } from '../../utils/gltfColorSpace'
 
 useGLTF.preload(SHKAF_MODEL_PATH)
-
-const SHADOW_MAP_SIZE = 512
-const SHADOW_CAMERA_SIZE = 2.5
-const SHADOW_CAMERA_FAR = 20
-const KEY_LIGHT_INTENSITY = 1.2
-const KEY_LIGHT_HEIGHT = 8
-
-const CONTACT_SHADOW_OPACITY = 0.45
-const CONTACT_SHADOW_BLUR = 2
-const CONTACT_SHADOW_FAR = 2.5
 
 const HOVER_NUDGE = 0.032
 const HOVER_WIGGLE_DURATION = 0.45
@@ -115,28 +103,10 @@ function getPullDirection(node) {
   return _pullDir.clone()
 }
 
-/** HDRI / фон из GLB */
-function GlbEnvironment({ source }) {
-  const scene = useThree((s) => s.scene)
-
-  useEffect(() => {
-    if (!USE_GLB_ENVIRONMENT || !source) return
-    if (source.environment) scene.environment = source.environment
-    if (source.background) scene.background = source.background
-  }, [source, scene])
-
-  return null
-}
-
-/** Шкаф — GLB с анимацией дверец и ящиков */
 /** Порог смещения мыши (px) — выше него клик считается вращением */
 const DRAG_THRESHOLD_PX = 5
 
-/** Акцентные детали — кожаные ручки, ободок, береста (124_ = планка, не акцент) */
-const ACCENT_MESH_NAMES = new Set(['145_', '17_', '19_', 'ручка_левая', 'ручка_правая'])
-
 export default function Shkaf({ sceneScale = 1 }) {
-  const studioAnchor = useStudioAnchor()
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
   const rootRef = useRef()
   const leftDoorRef = useRef()
@@ -156,16 +126,11 @@ export default function Shkaf({ sceneScale = 1 }) {
   const shkafGroup = useMemo(() => findByName(model, SHKAF_ROOT_NAME), [model])
   const bounds = useMemo(() => getCabinetBounds(model, SHKAF_ROOT_NAME), [model])
   const floorY = useMemo(() => getFloorY(model, SHKAF_ROOT_NAME), [model])
-  const mount = USE_STUDIO_GLB && studioAnchor.ready ? studioAnchor : null
-  const studioFloorY = mount?.floorY ?? STUDIO_FLOOR_Y
-  const mountX = (mount?.position.x ?? 0) + SHKAF_MOUNT_OFFSET[0]
-  const mountZ = (mount?.position.z ?? 0) + SHKAF_MOUNT_OFFSET[2]
-  const placementY =
-    (studioFloorY + SHKAF_MOUNT_OFFSET[1]) / sceneScale - floorY
-  const alignedFloorY = placementY + floorY
+  const placementY = -floorY
+  const alignedFloorY = 0
   const { center, size, box } = bounds
 
-  // Скрыть декор HDRI-сцены — оставить только shkaf; настроить материалы
+  // Скрыть декор HDRI-сцены — оставить только shkaf
   const scenePrepared = useRef(null)
   useEffect(() => {
     if (scenePrepared.current === model.uuid) return
@@ -177,9 +142,25 @@ export default function Shkaf({ sceneScale = 1 }) {
       })
     }
 
-    // Ножки: M_BlackCopper_v3 — процедурный материал без карт в GLB
-    applyProceduralMaterialFixups(model)
-    applyStudioMaterialTuning(model, 0.28)
+    fixGltfTextureColorSpaces(model)
+
+    // Патина: микрогрань в normal map без сглаживания → точечные блики при IBL
+    const doorMaterials = new Set(DOOR_SURFACE_MATERIALS)
+    model.traverse((child) => {
+      if (!child.isMesh) return
+      const materials = Array.isArray(child.material) ? child.material : [child.material]
+      materials.forEach((mat) => {
+        if (!mat?.name || !doorMaterials.has(mat.name) || !mat.normalMap) return
+        if (DOOR_NORMAL_SCALE <= 0) {
+          mat.normalMap = null
+        } else {
+          mat.normalScale = mat.normalScale ?? new THREE.Vector2(1, 1)
+          mat.normalScale.set(DOOR_NORMAL_SCALE, DOOR_NORMAL_SCALE)
+        }
+        mat.needsUpdate = true
+      })
+    })
+
     ensureUniqueMaterials(model)
 
     INACTIVE_DRAWER_NODES.forEach((name) => {
@@ -213,22 +194,6 @@ export default function Shkaf({ sceneScale = 1 }) {
 
       child.castShadow = true
       child.receiveShadow = true
-
-      const materials = Array.isArray(child.material) ? child.material : [child.material]
-      materials.forEach((mat) => {
-        if (!mat) return
-
-        // Акцентные детали (ручки, береста, ободок) — чуть сильнее рельеф, без лишнего блеска
-        if (ACCENT_MESH_NAMES.has(child.name)) {
-          mat.envMapIntensity = Math.min(mat.envMapIntensity ?? 0.35, 0.45)
-          if (mat.normalMap) {
-            mat.normalScale = mat.normalScale ?? new THREE.Vector2(1, 1)
-            mat.normalScale.set(1.6, 1.6)
-          }
-        }
-
-        mat.needsUpdate = true
-      })
     })
   }, [model])
 
@@ -494,14 +459,13 @@ export default function Shkaf({ sceneScale = 1 }) {
   ]
 
   return (
-    <group ref={rootRef} position={[mountX / sceneScale, placementY, mountZ / sceneScale]}>
+    <group ref={rootRef} position={[0, placementY, 0]}>
       <primitive
         object={model}
         onPointerDown={handlePointerDown}
         onClick={handleClick}
         onPointerOver={handlePointerOver}
       />
-      <GlbEnvironment source={scene} />
 
       {INTERIOR_LIGHTS.map(({ pos, target }, i) => (
         <spotLight
@@ -518,37 +482,9 @@ export default function Shkaf({ sceneScale = 1 }) {
         </spotLight>
       ))}
 
-      {!USE_STUDIO_GLB && (
-        <directionalLight
-          castShadow
-          color={STUDIO_LIGHT_COLOR}
-          intensity={KEY_LIGHT_INTENSITY}
-          position={[center.x + 2, center.y + KEY_LIGHT_HEIGHT, center.z + 4]}
-          shadow-mapSize={[SHADOW_MAP_SIZE, SHADOW_MAP_SIZE]}
-          shadow-camera-far={SHADOW_CAMERA_FAR}
-          shadow-camera-left={-SHADOW_CAMERA_SIZE}
-          shadow-camera-right={SHADOW_CAMERA_SIZE}
-          shadow-camera-top={SHADOW_CAMERA_SIZE}
-          shadow-camera-bottom={-SHADOW_CAMERA_SIZE}
-          shadow-bias={-0.0001}
-          shadow-normalBias={0.04}
-        >
-          <object3D position={[center.x, center.y, center.z]} />
-        </directionalLight>
+      {!USE_STUDIO_CAMERA && (
+        <FitCamera object={model} sceneScale={sceneScale} placementY={placementY} />
       )}
-
-      <ContactShadows
-        position={[center.x, alignedFloorY + 0.01, center.z]}
-        opacity={CONTACT_SHADOW_OPACITY}
-        scale={Math.max(size.x, size.z) * 1.8}
-        blur={CONTACT_SHADOW_BLUR}
-        far={CONTACT_SHADOW_FAR}
-        color="#000000"
-        frames={1}
-        resolution={256}
-      />
-
-      <FitCamera object={model} sceneScale={sceneScale} placementY={placementY} />
     </group>
   )
 }

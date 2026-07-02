@@ -4,7 +4,7 @@
  */
 
 const PREFIX = 'РУССО:perf'
-const REQUIRED_MILESTONES = ['webgl', 'assets', 'materials', 'camera', 'backdrop']
+const REQUIRED_MILESTONES = ['webgl', 'assets', 'materials', 'camera']
 
 function isEnabled() {
   if (import.meta.env.DEV) return true

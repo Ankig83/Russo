@@ -13,7 +13,7 @@ export default function Home() {
   }, [reset])
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden">
+    <div className="relative h-dvh min-h-screen w-screen overflow-hidden">
       <Scene />
       <Header />
     </div>

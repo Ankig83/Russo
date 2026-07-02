@@ -2,14 +2,22 @@ const assetBase = import.meta.env.BASE_URL
 
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
-export const SHKAF_MODEL_VERSION = '18'
+export const SHKAF_MODEL_VERSION = '19'
 export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
 
-/** HDRI из лёгкого GLB слабый — используем studio Environment на сайте */
+/** HDRI из GLB шкафа — не используем, сцена настраивается отдельно */
 export const USE_GLB_ENVIRONMENT = false
 
 /** Корневой узел шкафа в Blender */
 export const SHKAF_ROOT_NAME = 'shkaf'
+
+/**
+ * Normal map на door_left / door_right.
+ * 0 — отключить (микрогрань патины без blur в GLB → точечные блики в r3f).
+ * 0.3–0.5 — вернуть рельеф мягче; 1 — как в экспорте Blender.
+ */
+export const DOOR_NORMAL_SCALE = 0
+export const DOOR_SURFACE_MATERIALS = ['door_left', 'door_right']
 
 /** Показывать только шкаф — скрыть декор HDRI-сцены (камни, крем, лишние детали) */
 export const HIDE_SCENE_DECOR = true
