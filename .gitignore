@@ -25,3 +25,7 @@ dist-ssr
 
 # Тяжёлый исходник из Blender (в git не кладём)
 public/models/shkaf_full.glb
+
+# Python cache (Blender-скрипты)
+__pycache__/
+*.pyc

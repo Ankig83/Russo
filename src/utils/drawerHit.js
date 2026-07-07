@@ -1,14 +1,24 @@
 import { drawerSections } from '../constants/sections'
 import {
   DRAWER_LID_TO_BODY,
+  DRAWER_TABL_NODES,
   INACTIVE_DRAWER_NODES,
   INACTIVE_MESH_NAMES,
+  PLAQUE_MATERIAL_TO_SECTION,
   SHKAF_NODE_MAP,
 } from '../constants/shkafNodes'
 
-/** Имена нод-ящиков в GLB (drawer_1, drawer_2, …) */
-const DRAWER_NODE_NAMES = new Set(
-  drawerSections.map((s) => SHKAF_NODE_MAP[s.id]).filter(Boolean),
+/** Имена нод-ящиков из GLB (drawer_tl/tr/bl/br) → section.id */
+const DRAWER_NODE_TO_SECTION = Object.fromEntries(
+  drawerSections.map((s) => [SHKAF_NODE_MAP[s.id], s.id]),
+)
+
+/** Множество кликабельных нод ящиков */
+const DRAWER_NODE_NAMES = new Set(Object.keys(DRAWER_NODE_TO_SECTION))
+
+/** tabl_1 → drawer_tl … (для клика по табличке) */
+const TABL_TO_SECTION = Object.fromEntries(
+  Object.entries(DRAWER_TABL_NODES).map(([sectionId, tablName]) => [tablName, sectionId]),
 )
 
 function isUnderInactiveDrawerNode(object) {
@@ -21,33 +31,22 @@ function isUnderInactiveDrawerNode(object) {
   return false
 }
 
-/**
- * Клик попадает в дочерний mesh (например 148_.001),
- * а анимировать нужно родителя drawer_1 — поднимаемся по дереву.
- */
-export function findDrawerNodeFromHit(object) {
-  if (isUnderInactiveDrawerNode(object)) return null
-
+/** section.id по объекту raycast — идём вверх по дереву до ящика/таблички/плашки */
+function findSectionIdFromHit(object) {
   let current = object
   while (current) {
-    if (INACTIVE_DRAWER_NODES.has(current.name)) return null
-    if (INACTIVE_MESH_NAMES.has(current.name)) {
-      current = current.parent
-      continue
-    }
+    if (INACTIVE_MESH_NAMES.has(current.name)) return null
 
-    if (DRAWER_NODE_NAMES.has(current.name)) return current
+    if (DRAWER_NODE_NAMES.has(current.name)) return DRAWER_NODE_TO_SECTION[current.name]
 
-    if (DRAWER_LID_TO_BODY[current.name]) return current
+    if (TABL_TO_SECTION[current.name]) return TABL_TO_SECTION[current.name]
 
-    const lid = Object.entries(DRAWER_LID_TO_BODY).find(([, body]) => body === current.name)?.[0]
-    if (lid) {
-      if (current.parent?.name === lid) return current.parent
-      let root = current
-      while (root.parent) root = root.parent
-      const lidNode = root.getObjectByName?.(lid)
-      if (lidNode) return lidNode
-      return current
+    if (current.isMesh && current.material) {
+      const materials = Array.isArray(current.material) ? current.material : [current.material]
+      for (const mat of materials) {
+        const sectionId = PLAQUE_MATERIAL_TO_SECTION[mat?.name]
+        if (sectionId) return sectionId
+      }
     }
 
     current = current.parent
@@ -55,32 +54,42 @@ export function findDrawerNodeFromHit(object) {
   return null
 }
 
-/** section по ноде ящика из GLB */
-export function findDrawerSectionByNode(drawerNode) {
-  if (!drawerNode) return null
+/** Нода для анимации выдвижения — сам ящик drawer_tl/tr/bl/br */
+export function findDrawerNodeFromHit(object) {
+  if (isUnderInactiveDrawerNode(object)) return null
 
-  const direct = drawerSections.find((s) => SHKAF_NODE_MAP[s.id] === drawerNode.name)
-  if (direct) return direct
+  const sectionId = findSectionIdFromHit(object)
+  if (!sectionId) return null
 
-  // крышка (section → body в маппинге)
-  const body = DRAWER_LID_TO_BODY[drawerNode.name]
-  if (body) {
-    return drawerSections.find((s) => SHKAF_NODE_MAP[s.id] === body) ?? null
+  // подняться до самой ноды ящика в дереве
+  let current = object
+  while (current) {
+    if (current.name === SHKAF_NODE_MAP[sectionId]) return current
+    current = current.parent
   }
 
-  // корпус .1
-  const lid = Object.entries(DRAWER_LID_TO_BODY).find(([, b]) => b === drawerNode.name)?.[0]
-  if (lid) {
-    return drawerSections.find((s) => SHKAF_NODE_MAP[s.id] === lid) ?? null
+  // tabl/плашка привязаны к ящику как дети — найти родителя-ящик
+  current = object
+  while (current) {
+    if (DRAWER_NODE_NAMES.has(current.name)) return current
+    current = current.parent
   }
 
   return null
 }
 
-/** section по объекту, в который попал raycast */
+/** section по ноде ящика из GLB */
+export function findDrawerSectionByNode(drawerNode) {
+  if (!drawerNode) return null
+  const sectionId = DRAWER_NODE_TO_SECTION[drawerNode.name]
+  return drawerSections.find((s) => s.id === sectionId) ?? null
+}
+
+/** section по объекту raycast — ящик, tabl или плашка */
 export function findDrawerSectionFromHit(object) {
-  const drawerNode = findDrawerNodeFromHit(object)
-  return drawerNode ? findDrawerSectionByNode(drawerNode) : null
+  const sectionId = findSectionIdFromHit(object)
+  if (!sectionId) return null
+  return drawerSections.find((s) => s.id === sectionId) ?? null
 }
 
 /** Имя корпуса (.1) по крышке */

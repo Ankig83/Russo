@@ -11,7 +11,7 @@ export default function Header() {
     <header className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-6 md:p-8">
       <Link
         to="/"
-        className="pointer-events-auto w-fit text-2xl font-bold tracking-[0.3em] text-neutral-800 md:text-3xl"
+        className="pointer-events-auto w-fit text-2xl font-bold tracking-[0.3em] text-neutral-100 md:text-3xl"
       >
         РУССО
       </Link>
@@ -19,7 +19,7 @@ export default function Header() {
       <div className="flex flex-col items-center gap-2 pb-4">
           <div className={doorsOpen ? '' : 'animate-bounce'}>
             <svg
-              className="h-6 w-6 text-neutral-600"
+              className="h-6 w-6 text-neutral-400"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -32,7 +32,7 @@ export default function Header() {
               />
             </svg>
           </div>
-          <p className="text-sm tracking-wide text-neutral-500 md:text-base">
+          <p className="text-sm tracking-wide text-neutral-400 md:text-base">
             {doorsOpen
               ? isMobile
                 ? 'нажми, чтобы закрыть'

@@ -12,10 +12,11 @@ import {
 import { SHKAF_ROOT_NAME } from '../../constants/shkafNodes'
 
 /** Подгоняет камеру и OrbitControls — фронтальный вид чуть сверху */
-export default function FitCamera({ object, sceneScale = 1, placementY = 0 }) {
+export default function FitCamera({ object, sceneScale = 1, placement = [0, 0, 0] }) {
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls)
   const fittedFor = useRef(null)
+  const [px, py, pz] = placement
 
   useEffect(() => {
     if (!object) return
@@ -30,12 +31,11 @@ export default function FitCamera({ object, sceneScale = 1, placementY = 0 }) {
       const distance = worldMaxDim * CAMERA_DISTANCE_FACTOR
       const heightLift = worldMaxDim * CAMERA_HEIGHT_FACTOR
 
-      // Точка наведения чуть выше геом. центра — не «с пола»
       const aimLocalY = box.min.y + size.y * CAMERA_AIM_HEIGHT_RATIO
       const target = new THREE.Vector3(
-        center.x * sceneScale,
-        (placementY + aimLocalY) * sceneScale,
-        center.z * sceneScale,
+        (px + center.x) * sceneScale,
+        (py + aimLocalY) * sceneScale,
+        (pz + center.z) * sceneScale,
       )
 
       camera.position.set(target.x, target.y + heightLift, target.z + distance)
@@ -59,7 +59,7 @@ export default function FitCamera({ object, sceneScale = 1, placementY = 0 }) {
 
     const retry = setTimeout(apply, 200)
     return () => clearTimeout(retry)
-  }, [object, camera, controls, sceneScale, placementY])
+  }, [object, camera, controls, sceneScale, px, py, pz])
 
   return null
 }

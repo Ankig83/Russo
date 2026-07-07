@@ -160,16 +160,57 @@ studio_root  (Empty, тип Plain Axes)
 
   ```
   shkaf
-  ├── door_left
-  ├── door_right
-  ├── drawer_1
-  ├── drawe_3      ← опечатка в текущем GLB, см. shkafNodes.js
-  ├── drawer_4
-  ├── draver_5     ← опечатка в текущем GLB
-  └── drawer_6
+  ├── door_left          (Empty/pivot — вращение при открытии)
+  │   └── Beresta_L      (mesh-панель с патиной)
+  ├── door_right         (Empty/pivot; rotation Y = 0 в Blender!)
+  │   └── Beresta_R
+  ├── drawer_1           (группа верхнего ряда — анимация выдвижения)
+  │   ├── drawer_tl      (mesh-фронт, верх-слева)
+  │   ├── drawer_tr      (mesh-фронт, верх-справа)
+  │   ├── tabl_1         (табличка, материал prostranstva)
+  │   ├── tabl_2         (табличка, материал avtorskie_m)
+  │   └── …              (внутренняя обивка Btresta_inside.*)
+  ├── drawer_2           (группа нижнего ряда — анимация выдвижения)
+  │   ├── drawer_bl      (mesh-фронт, низ-слева)
+  │   ├── drawer_br      (mesh-фронт, низ-справа)
+  │   ├── tabl_3         (табличка, материал project_M)
+  │   ├── tabl_4         (табличка, материал about)
+  │   └── …
+  └── Beck_W             (задняя стенка, материал bes=resta_W_M)
   ```
 
+- [ ] **`door_right`**: rotation Y = **0** в Blender (иначе в GLB запечётся π и дверь будет открыта на сайте)
+- [ ] **`drawer_1` / `drawer_2`**: это pivot-группы для анимации — **не** отключать raycast, не переименовывать
+- [ ] **`drawer_tl/tr/bl/br`**: мелкие mesh-фронты — кликабельны, маппятся на `drawer_1`/`drawer_2`
+- [ ] **`tabl_1…4`**: таблички с текстом — кликабельны, цепляются к `drawer_1`/`drawer_2` в `Shkaf.jsx`
 - [ ] Scale applied на всём: выдели всё → **Ctrl+A → Применить масштаб**
+
+---
+
+### Шаг 2.1b — Контракт навигации ящиков (Blender ↔ JS)
+
+Сайт не анимирует `drawer_tl` напрямую — выдвигается **`drawer_1` или `drawer_2`**.
+
+| section.id (JS) | route | Группа анимации | tabl | материал таблички |
+|---------------|-------|-----------------|------|-------------------|
+| `drawer_tl` | `/private-spaces` | `drawer_1` | `tabl_1` | `prostranstva` |
+| `drawer_tr` | `/commercial-projects` | `drawer_1` | `tabl_2` | `avtorskie_m` |
+| `drawer_bl` | `/author-collections` | `drawer_2` | `tabl_3` | `project_M` |
+| `drawer_br` | `/about` | `drawer_2` | `tabl_4` | `about` |
+
+**Логика клика** (`src/utils/drawerHit.js`):
+
+1. Raycast попадает в `tabl_*`, `drawer_tl/tr/bl/br`, бересту внутри ящика или в сам `drawer_1`/`drawer_2`
+2. Анимация всегда на **`drawer_1` / `drawer_2`**
+3. Раздел (лево/право внутри группы) — по материалу таблички или по local X (< 0 = левый)
+
+**Файлы контракта** (менять вместе с Blender):
+
+- `src/constants/shkafNodes.js` — `SHKAF_NODE_MAP`, `DRAWER_GROUP_SECTIONS`, `DRAWER_TABL_NODES`, `PLAQUE_MATERIAL_TO_SECTION`
+- `src/constants/sections.js` — `id` и `route`
+- После re-export: **`SHKAF_MODEL_VERSION` +1**
+
+> **Не добавляй** `drawer_1`/`drawer_2` в `INACTIVE_DRAWER_NODES` — это отключит всю навигацию по ящикам.
 
 ---
 

@@ -37,3 +37,24 @@ export function getFloorY(object, rootName = SHKAF_ROOT_NAME) {
   const { box } = getCabinetBounds(object, rootName)
   return box.isEmpty() ? 0 : box.min.y
 }
+
+/** Пол на y=0, геом. центр на x=0 z=0 — для экспортов со смещённым pivot */
+export function getCabinetPlacement(object, rootName = SHKAF_ROOT_NAME) {
+  const { box, center, size } = getCabinetBounds(object, rootName)
+  if (box.isEmpty()) {
+    return {
+      position: [0, 0, 0],
+      alignedCenter: new Vector3(),
+      size,
+      box,
+    }
+  }
+
+  const floorY = box.min.y
+  return {
+    position: [-center.x, -floorY, -center.z],
+    alignedCenter: new Vector3(0, center.y - floorY, 0),
+    size,
+    box,
+  }
+}

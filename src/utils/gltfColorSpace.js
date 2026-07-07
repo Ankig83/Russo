@@ -25,7 +25,18 @@ const LINEAR_SLOTS = [
 ]
 
 function setColorSpace(tex, space) {
-  if (tex && tex.colorSpace !== space) tex.colorSpace = space
+  if (!tex) return
+  if (tex.colorSpace !== space) {
+    tex.colorSpace = space
+    // Без needsUpdate GPU остаётся со старым sRGB-декодом → cyan/orange на normal map
+    tex.needsUpdate = true
+  }
+  if (tex.anisotropy < 8) {
+    tex.anisotropy = 8
+    tex.minFilter = THREE.LinearMipmapLinearFilter
+    tex.magFilter = THREE.LinearFilter
+    tex.needsUpdate = true
+  }
 }
 
 /** glTF: baseColor → sRGB, metallicRoughness / normal → linear */
