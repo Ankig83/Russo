@@ -992,22 +992,27 @@ function Shkaf({ sceneScale = 1 }) {
   }, [controls])
 
   useEffect(() => {
-    const onWindowPointerUp = () => {
+    const releaseOrbit = () => {
       if (!orbitBlocked.current) return
       orbitBlocked.current = false
       if (controls) controls.enabled = true
     }
-    window.addEventListener('pointerup', onWindowPointerUp)
-    window.addEventListener('pointercancel', onWindowPointerUp)
+    window.addEventListener('pointerup', releaseOrbit)
+    window.addEventListener('pointercancel', releaseOrbit)
+    window.addEventListener('blur', releaseOrbit)
     return () => {
-      window.removeEventListener('pointerup', onWindowPointerUp)
-      window.removeEventListener('pointercancel', onWindowPointerUp)
+      window.removeEventListener('pointerup', releaseOrbit)
+      window.removeEventListener('pointercancel', releaseOrbit)
+      window.removeEventListener('blur', releaseOrbit)
     }
   }, [controls])
 
   const handleClick = useCallback(
     (event) => {
       event.stopPropagation()
+      // После лагов pointerup может не успеть — разблокируем orbit до обработки клика
+      orbitBlocked.current = false
+      if (controls) controls.enabled = true
 
       const dx = event.clientX - pointerDownPos.current.x
       const dy = event.clientY - pointerDownPos.current.y

@@ -1,10 +1,5 @@
-import StubPage from '../components/ui/StubPage'
+import PortfolioSectionPage from '../components/portfolio/PortfolioSectionPage'
 
 export default function PrivateSpaces() {
-  return (
-    <StubPage
-      title="Частные пространства"
-      description="Индивидуальные интерьерные решения для дома. Раздел в разработке."
-    />
-  )
+  return <PortfolioSectionPage category="private" />
 }

@@ -1,10 +1,5 @@
-import StubPage from '../components/ui/StubPage'
+import PortfolioSectionPage from '../components/portfolio/PortfolioSectionPage'
 
 export default function AuthorCollections() {
-  return (
-    <StubPage
-      title="Авторские коллекции"
-      description="Коллекционные изделия мебельной компании «Руссо». Раздел в разработке."
-    />
-  )
+  return <PortfolioSectionPage category="author" />
 }
