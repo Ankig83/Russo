@@ -41,6 +41,55 @@ GitHub → **Actions** → **Deploy to Beget VPS** — зелёная галоч
 
 ---
 
+## 4. Если Actions падает на «Upload dist to VPS»
+
+**Сборка (`npm ci` + `npm run build`) проходит — проблема в SSH, не в коде.**
+
+### Диагностика
+
+1. GitHub → Actions → упавший run → шаг **Test SSH to VPS** — там будет текст ошибки.
+2. С ПК проверь порт 22:
+   ```powershell
+   Test-NetConnection 93.189.229.230 -Port 22
+   ```
+   Если `TcpTestSucceeded : False` — SSH снаружи закрыт, Actions тоже не достучится.
+
+### Что сделать на VPS (через консоль Beget / VNC)
+
+```bash
+# sshd запущен?
+systemctl status ssh
+
+# firewall — порт 22 открыт для входящих
+ufw allow 22/tcp
+ufw status
+
+# или в панели Beget: VPS → Firewall → разрешить SSH (22)
+```
+
+После открытия порта: Actions → **Re-run all jobs**.
+
+### Секреты GitHub (если «Secret … не задан»)
+
+| Secret | Значение |
+|--------|----------|
+| `BEGET_HOST` | `93.189.229.230` |
+| `BEGET_USER` | `root` |
+| `BEGET_PASSWORD` | пароль root от VPS |
+
+---
+
+## 5. Ручной деплой (если SSH с ПК работает, а Actions — нет)
+
+```bash
+npm ci && npm run build
+rsync -avz --delete dist/ root@93.189.229.230:/var/www/russo/
+```
+
+На Windows — через WSL или Git Bash (нужен rsync + ssh).
+
+---
+
 ## Ветки
 
 | Ветка | Куда |

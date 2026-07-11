@@ -16,8 +16,37 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Validate secrets
+        env:
+          BEGET_HOST: ${{ secrets.BEGET_HOST }}
+          BEGET_USER: ${{ secrets.BEGET_USER }}
+          BEGET_PASSWORD: ${{ secrets.BEGET_PASSWORD }}
+        run: |
+          test -n "$BEGET_HOST" || { echo "::error::Secret BEGET_HOST не задан"; exit 1; }
+          test -n "$BEGET_USER" || { echo "::error::Secret BEGET_USER не задан"; exit 1; }
+          test -n "$BEGET_PASSWORD" || { echo "::error::Secret BEGET_PASSWORD не задан"; exit 1; }
+          echo "Secrets OK (host=$BEGET_HOST user=$BEGET_USER)"
+
       - run: npm ci
       - run: npm run build
+
+      - name: Install deploy tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync openssh-client
+
+      - name: Test SSH to VPS
+        env:
+          BEGET_HOST: ${{ secrets.BEGET_HOST }}
+          BEGET_USER: ${{ secrets.BEGET_USER }}
+          BEGET_PASSWORD: ${{ secrets.BEGET_PASSWORD }}
+        run: |
+          echo "Проверка SSH ${BEGET_USER}@${BEGET_HOST}:22 ..."
+          sshpass -p "$BEGET_PASSWORD" ssh \
+            -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=20 \
+            -o PreferredAuthentications=password \
+            -o PubkeyAuthentication=no \
+            "${BEGET_USER}@${BEGET_HOST}" \
+            "echo SSH_OK && mkdir -p /var/www/russo"
 
       - name: Upload dist to VPS
         env:
@@ -25,9 +54,8 @@ jobs:
           BEGET_USER: ${{ secrets.BEGET_USER }}
           BEGET_PASSWORD: ${{ secrets.BEGET_PASSWORD }}
         run: |
-          sudo apt-get update && sudo apt-get install -y sshpass
           sshpass -p "$BEGET_PASSWORD" rsync -avz --delete \
-            -e "ssh -o StrictHostKeyChecking=no" \
+            -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o PreferredAuthentications=password -o PubkeyAuthentication=no" \
             dist/ "${BEGET_USER}@${BEGET_HOST}:/var/www/russo/"
 
       - name: Fix permissions on VPS
@@ -37,6 +65,7 @@ jobs:
           username: ${{ secrets.BEGET_USER }}
           password: ${{ secrets.BEGET_PASSWORD }}
           port: 22
+          timeout: 30s
           script: |
             chown -R www-data:www-data /var/www/russo
             rm -f /var/www/russo/models/shkaf_full.glb
