@@ -1,7 +1,7 @@
 # РУССО — состояние кода для разработки
 
 > Живой снимок того, **что работает, как и где**. Обновляй при изменении логики шкафа, сцены или навигации.
-> Дата актуализации: 2026-07-08.
+> Дата актуализации: 2026-07-11.
 > Пайплайн Blender→GLB описан отдельно в `docs/BLENDER_R3F_PIPELINE.md`.
 
 ---
@@ -53,7 +53,7 @@ src/
 ├── main.jsx                    точка входа
 │
 ├── pages/
-│   ├── Home.jsx                главная: <Scene/> + <Header/>, сброс стейта шкафа
+│   ├── Home.jsx                главная: <Scene/> + <Header/> + <LoadingOverlay/>, сброс стейта шкафа
 │   ├── PrivateSpaces.jsx       /private-spaces        (заглушка)
 │   ├── CommercialProjects.jsx  /commercial-projects   (заглушка)
 │   ├── AuthorCollections.jsx   /author-collections    (заглушка)
@@ -71,17 +71,23 @@ src/
 │   │   ├── StudioBackdrop.jsx  фон-стена (процедурный градиент)
 │   │   ├── StudioHorizon.jsx   мягкая подложка-градиент (в обычном режиме)
 │   │   ├── HeroBackdrop.jsx    ⭐ hero-look: лайтбокс-стена + рассеянный fill/ободок
-│   │   ├── HeroLogo.jsx        ⭐ hero-look: логотип РУССО на лайтбоксе
+│   │   ├── HeroLogo.jsx        ⭐ hero-look: 3D-логотип (SVGLoader + ExtrudeGeometry) на лайтбоксе
+│   │   ├── HeroShadowLight.jsx тень шкафа на пол (hero-look)
 │   │   ├── ReflectiveFloor.jsx ⭐ hero-look: отражающий пол (MeshReflectorMaterial)
-│   │   ├── CameraIntro.jsx     плавный въезд камеры на старте
-│   │   ├── Loader.jsx          прелоадер
+│   │   ├── ShkafGlbLegs.jsx    @deprecated — ножки теперь attach в Shkaf через attachGlbLegs
+│   │   ├── CabinetLegs.jsx     процедурные ножки (fallback, USE_PROCEDURAL_LEGS)
+│   │   ├── CameraIntro.jsx     плавный въезд камеры (CAMERA_INTRO.enabled = false)
+│   │   ├── Loader.jsx          прелоадер внутри Canvas (useProgress)
 │   │   └── DrawerPlaque.jsx    @deprecated 2D-оверлей (таблички теперь в GLB)
 │   └── ui/
-│       ├── Header.jsx          логотип «РУССО» + меню
+│       ├── Header.jsx          подсказка «открой шкаф» снизу по центру
+│       ├── LoadingOverlay.jsx  ⭐ прелоад: монограмма РУССО, shimmer, progress, улёт в угол
+│       ├── CornerLogo.jsx      маленькая монограмма top-right после загрузки (на всех страницах)
 │       └── StubPage.jsx        шаблон страницы-заглушки
 │
 ├── store/
-│   └── shkafStore.js           zustand: doorsOpen, animating, activeDrawerId
+│   ├── shkafStore.js           zustand: doorsOpen, animating, activeDrawerId
+│   └── appStore.js             zustand: loadingDone (после exit-анимации LoadingOverlay)
 │
 ├── hooks/
 │   ├── useStudioPerformance.js выбор perf-тира (low/medium/high)
@@ -99,7 +105,8 @@ src/
 │   ├── materialFixups.js       правки материалов (корпус, береста, медь, envMap)
 │   ├── patinaTextures.js       загрузка/применение текстур патины на двери
 │   ├── doorPatinaFixups.js     доп. правки материалов дверей
-│   ├── cabinetBounds.js        габариты/центр/позиционирование шкафа
+│   ├── cabinetBounds.js        габариты/центр/позиционирование шкафа (центр X/Z по pivot дверей)
+│   ├── attachGlbLegs.js        ⭐ attach внешних ножек из shkaf-legs.glb (GLB_LEG_TRANSFORMS)
 │   ├── gltfColorSpace.js       цветовые пространства текстур + anisotropy
 │   ├── shkafLightLayers.js     назначение light-layers мешам (двери/корпус)
 │   └── perf.js                 замеры загрузки
@@ -114,6 +121,7 @@ src/
 ## 4. Модель шкафа (GLB)
 
 - Путь: `public/models/shkaf.glb`
+- Ножки (отдельный GLB): `public/models/shkaf-legs.glb` — attach в `Shkaf.jsx` через `attachGlbLegs.js` (`GLB_LEG_TRANSFORMS`).
 - Версия кэша: `SHKAF_MODEL_VERSION` в `shkafNodes.js` (сейчас **'33'**). Поднимать после каждого ре-экспорта из Blender — иначе `useGLTF` отдаёт старую модель из кэша.
 
 ### Актуальная иерархия нод
@@ -163,12 +171,14 @@ shkaf
 Всё крутится вокруг стора `shkafStore` (`doorsOpen`, `animating`, `activeDrawerId`).
 
 **Клик по сцене** (`handleClick`):
-1. Отсекается «клик-как-перетаскивание» по порогу `DRAG_THRESHOLD_PX` (5 px) — чтобы вращение орбитой не считалось кликом.
-2. Если **двери открыты** и нет активной анимации → пробуем распознать ящик:
+1. Отсекается «клик-как-перетаскивание» по порогу: **5 px** desktop / **14 px** mobile.
+2. **Desktop:** на `pointerdown` (только ЛКМ) orbit блокируется (`controls.enabled = false`), чтобы клик по шкафу не крутил камеру. ПКМ/wheel не трогаем (pan/zoom).
+3. **Mobile (touch):** orbit **не блокируется** — один палец крутит камеру поверх шкафа; тап с малым сдвигом открывает/закрывает двери.
+4. Если **двери открыты** и нет активной анимации → пробуем распознать ящик:
    - `findDrawerNodeFromHit(event.object)` → нода `drawer_tl/tr/bl/br` для анимации.
    - `findDrawerSectionFromHit(event.object)` → section (учитывает клик по табличке/материалу плашки).
    - если найдены — `handleDrawerClick`: GSAP выдвигает ящик по локальной оси Z на `DRAWER_PULL_DISTANCE`, затем через `NAVIGATE_DELAY_MS` вызывает `navigate(route)`.
-3. Иначе → `toggleDoors()` (открыть/закрыть).
+5. Иначе → `toggleDoors()` (открыть/закрыть).
 
 **Наведение** (`handlePointerOver`): при открытых дверях — подсветка ящика (emissive) + лёгкое «покачивание» GSAP (`applyDrawerHover`). Таблички от подсветки исключены.
 
@@ -207,7 +217,10 @@ shkaf
 ## 8. Сцена и рендер (`Scene.jsx` + `studioScene.js`)
 
 - **Canvas**: тени вкл, `dpr` из perf-тира, ACES tone mapping.
-- **Камера**: `PerspectiveCamera` + `OrbitControls` с ограничениями углов/дистанции из `STUDIO.camera`/`orbit`.
+- **Камера**: `PerspectiveCamera` + `OrbitControls` с ограничениями из `STUDIO.camera`/`orbit` (desktop) или `STUDIO_MOBILE` (<768px).
+- **Orbit limits**: `StudioOrbitLimits` clamp'ит pan-target и высоту камеры (`orbit.panLimits`). Max zoom out = дистанция стартового кадра (`getStudioCameraStartDistance`, ~6.55 desktop / ~7.45 mobile).
+- **Pan**: desktop — `enablePan: true` (ПКМ); mobile — `enablePan: false`, touch ONE=rotate, TWO=pinch zoom.
+- **`DEBUG_LOG_CAMERA_POSITION`**: `false` (лог каждый кадр лагал orbit).
 - **Свет**: `StudioLights` (RectArea key/fill/rim) + `StudioShadowLight` (directional для тени). Есть разделение слоёв: двери — layer 0, корпус — layer 1 (`shkafLightLayers.js`, `getEffectiveSplitCorpusLight`).
 - **Окружение**: `StudioEnvironment` (IBL), `StudioBackdrop` (стена), `StudioHorizon` (подложка).
 - **Пол удалён** — компонент `StudioFloor` и плиточная модель больше не используются (был `StudioFloor.jsx`).
@@ -234,9 +247,11 @@ shkaf
 |---|---|---|
 | Лайтбокс-стена | `HeroBackdrop.jsx` | широкая светящаяся молочная панель за шкафом (шейдер, `toneMapped=false` → светится через Bloom). Высота `HERO.lightbox.height`, ширина `~3 шкафа`. |
 | Рассеянный свет | `HeroBackdrop.jsx` | `rectAreaLight` от лайтбокса на шкаф (мягкая диффузная заливка) + точечный ободок сверху-сзади. Оба на слоях `doors`+`corpus`. |
-| Логотип | `HeroLogo.jsx` | знак РУССО на лайтбоксе выше шкафа. Сейчас — плоский чёрный (без эффектов). Инвертирует яркость исходника в альфу (чёрные формы → непрозрачные, белый фон → прозрачный). |
+| Логотип 3D | `HeroLogo.jsx` | ExtrudeGeometry из SVG на лайтбоксе. Рендерится **только после** `loadingDone` (чтобы не дублировать HTML-прелоад). |
+| HTML-прелоад | `LoadingOverlay.jsx` | монограмма `public/assets/russo-mark.svg`, shimmer, float, progress ≥6–7.5 с, GSAP-улёт в top-right → `setLoadingDone()`. |
+| Уголок | `CornerLogo.jsx` | 36/48 px монограмма на всех страницах (`App.jsx`) после загрузки. |
 | Отражающий пол | `ReflectiveFloor.jsx` | тёмный глянец на `MeshReflectorMaterial` (drei) — отражает шкаф и лайтбокс. Под hero-look заменяет `StudioHorizon`. |
-| Въезд камеры | `CameraIntro.jsx` | на старте камера едет из `CAMERA_INTRO.from` в рабочую позицию (GSAP). |
+| Въезд камеры | `CameraIntro.jsx` | **выключен** (`CAMERA_INTRO.enabled = false`) — старт сразу из `STUDIO.camera`. |
 
 **Как включить/выключить:** `USE_HERO_LOOK = true/false`. При `false` возвращается обычная студия (`StudioHorizon` вместо отражающего пола, обычный фон).
 
@@ -308,7 +323,10 @@ shkaf
 | Качество/производительность/падения GPU | `constants/studioScene.js` (`STUDIO_PERFORMANCE`) |
 | Свет / тени | `StudioLights.jsx`, `StudioShadowLight.jsx`, `STUDIO.lights` |
 | Цвет/блеск материалов | `utils/materialFixups.js`, `CORPUS_PBR`, `BERESTA_*` |
-| Фон/подложка | `StudioBackdrop.jsx`, `StudioHorizon.jsx` |
+| Orbit / камера / mobile | `constants/studioScene.js` (`STUDIO`, `STUDIO_MOBILE`, `getStudio*`), `Scene.jsx` |
+| Прелоад / монограмма | `LoadingOverlay.jsx`, `CornerLogo.jsx`, `appStore.js` |
+| Фон/подложка | `StudioBackdrop.jsx`, `StudioHorizon.jsx`, `HeroBackdrop.jsx` |
+| Ножки GLB | `utils/attachGlbLegs.js`, `Shkaf.jsx` |
 
 ---
 
@@ -318,3 +336,30 @@ shkaf
 - `door_right` в GLB может грузиться «открытой» из-за запечённого поворота — сбрасывается в `Shkaf.jsx`.
 - HMR при удалении файлов иногда падает промежуточной ошибкой — помогает полная перезагрузка вкладки.
 - Кэш модели: после изменения GLB **обязательно** поднимать `SHKAF_MODEL_VERSION`, иначе браузер отдаёт старую версию.
+- **Safe area**: `index.html` → `viewport-fit=cover`; CSS-переменные `--safe-*` в `index.css` для notch/home indicator.
+- **Ножки:** не сбрасывать `GLB_LEG_TRANSFORMS` в `[0,0,-0.0192]` — иначе ножки отъедут от корпуса.
+
+---
+
+## 12. Mobile (<768px, `useIsMobile`)
+
+| Область | Что сделано |
+|---|---|
+| Камера / orbit | `STUDIO_MOBILE`: FOV 40°, дальше камера, уже azimuth, `enablePan: false`, `rotateSpeed`/`zoomSpeed` ниже |
+| Canvas | `touch-action: none`, `100dvh`, `MOBILE_SCALE = 0.75` |
+| Shkaf | touch не блокирует orbit; drag-порог 14 px |
+| LoadingOverlay | лого ~240px, min show 6 с, safe-area при улёте в угол |
+| CornerLogo / Header | меньше размер, отступы через `--safe-top/bottom` |
+
+---
+
+## 13. В планах: портфолио (gradientslider)
+
+Разделы `/private-spaces`, `/commercial-projects`, `/author-collections` — пока **StubPage**.
+
+**План v1** (ещё не в коде):
+- React-порт [gradientslider](https://github.com/clementgrellier/gradientslider) — 3D-карусель фото + reactive gradient background.
+- Data layer `portfolioProjects.js`: проекты по категориям.
+- Hub-страница раздела → `/category/:slug` с каруселью.
+- Первые проекты от заказчика: **Соборная мечеть** (commercial), **кухня+гостиная Симферополь** (private); author — empty state.
+- Ассеты: HEIC из zip → WebP в `public/assets/portfolio/` (скрипт конвертации).

@@ -7,7 +7,7 @@ export default function Header() {
   const doorsOpen = useShkafStore((s) => s.doorsOpen)
 
   return (
-    <header className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-end p-6 pb-8 md:p-8 md:pb-10">
+    <header className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-end px-4 pb-[max(2rem,var(--safe-bottom))] pt-4 md:px-8 md:pb-[max(2.5rem,var(--safe-bottom))]">
       {/* <Link
         to="/"
         className="pointer-events-auto w-fit text-2xl font-bold tracking-[0.3em] text-neutral-100 md:text-3xl"
@@ -31,7 +31,7 @@ export default function Header() {
               />
             </svg>
           </div>
-          <p className="text-sm tracking-wide text-neutral-400 md:text-base">
+          <p className="text-xs tracking-wide text-neutral-400 md:text-base">
             {doorsOpen
               ? isMobile
                 ? 'нажми, чтобы закрыть'

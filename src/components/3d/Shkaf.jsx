@@ -4,6 +4,7 @@ import { useGLTF } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import gsap from 'gsap'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 import { drawerSections } from '../../constants/sections'
 import {
   SHKAF_MODEL_PATH,
@@ -504,8 +505,9 @@ function getPullDirection(node) {
   return _pullDir.clone()
 }
 
-/** Порог смещения мыши (px) — выше него клик считается вращением */
-const DRAG_THRESHOLD_PX = 5
+/** Порог смещения (px) — выше него клик считается вращением камеры */
+const DRAG_THRESHOLD_DESKTOP_PX = 5
+const DRAG_THRESHOLD_MOBILE_PX = 14
 
 function attachCabinetSceneRoots(model) {
   const shkafRoot = model.getObjectByName(SHKAF_ROOT_NAME)
@@ -665,6 +667,8 @@ function Shkaf({ sceneScale = 1 }) {
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
   const { scene: legsScene } = useGLTF(SHKAF_LEGS_MODEL_PATH)
   const controls = useThree((s) => s.controls)
+  const isMobile = useIsMobile()
+  const dragThresholdPx = isMobile ? DRAG_THRESHOLD_MOBILE_PX : DRAG_THRESHOLD_DESKTOP_PX
   const rootRef = useRef()
   const leftDoorRef = useRef()
   const rightDoorRef = useRef()
@@ -967,23 +971,38 @@ function Shkaf({ sceneScale = 1 }) {
     [model, navigate, setAnimating, setActiveDrawerId, clearDrawerHover],
   )
 
+  const orbitBlocked = useRef(false)
+
   const handlePointerDown = useCallback((event) => {
-    event.stopPropagation()
     pointerDownPos.current = { x: event.clientX, y: event.clientY }
+    // На таче orbit не блокируем — один палец крутит камеру, тап открывает шкаф
+    if (event.pointerType === 'touch') return
+    // ПКМ / колесо — не трогаем OrbitControls (pan / zoom)
+    if (event.button !== 0) return
+    event.stopPropagation()
+    orbitBlocked.current = true
     if (controls) controls.enabled = false
   }, [controls])
 
   const handlePointerUp = useCallback((event) => {
+    if (!orbitBlocked.current) return
     event.stopPropagation()
+    orbitBlocked.current = false
     if (controls) controls.enabled = true
   }, [controls])
 
   useEffect(() => {
     const onWindowPointerUp = () => {
+      if (!orbitBlocked.current) return
+      orbitBlocked.current = false
       if (controls) controls.enabled = true
     }
     window.addEventListener('pointerup', onWindowPointerUp)
-    return () => window.removeEventListener('pointerup', onWindowPointerUp)
+    window.addEventListener('pointercancel', onWindowPointerUp)
+    return () => {
+      window.removeEventListener('pointerup', onWindowPointerUp)
+      window.removeEventListener('pointercancel', onWindowPointerUp)
+    }
   }, [controls])
 
   const handleClick = useCallback(
@@ -992,7 +1011,7 @@ function Shkaf({ sceneScale = 1 }) {
 
       const dx = event.clientX - pointerDownPos.current.x
       const dy = event.clientY - pointerDownPos.current.y
-      if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD_PX) return
+      if (Math.sqrt(dx * dx + dy * dy) > dragThresholdPx) return
 
       const { activeDrawerId } = useShkafStore.getState()
 
@@ -1007,7 +1026,7 @@ function Shkaf({ sceneScale = 1 }) {
 
       toggleDoors()
     },
-    [doorsOpen, animating, toggleDoors, handleDrawerClick],
+    [doorsOpen, animating, toggleDoors, handleDrawerClick, dragThresholdPx],
   )
 
   const handlePointerOver = useCallback(

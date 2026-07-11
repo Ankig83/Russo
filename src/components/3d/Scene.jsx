@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { PerspectiveCamera, ContactShadows, OrbitControls, useProgress } from '@react-three/drei'
 import { EffectComposer, Vignette, BrightnessContrast, HueSaturation, N8AO, Bloom, Noise } from '@react-three/postprocessing'
 import * as THREE from 'three'
@@ -18,7 +18,7 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useStudioPerformance } from '../../hooks/useStudioPerformance'
 import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
 import { SCENE_BG_STYLE, SCENE_CANVAS_BG, TONE_MAPPING_EXPOSURE } from '../../constants/scene'
-import { STUDIO, DEBUG_LOG_CAMERA_POSITION, USE_HDRI_ONLY, LIGHT_LAYERS, USE_REFERENCE_VOID_LOOK, REFERENCE_VOID, USE_HERO_LOOK, HERO, HERO_LIGHTBOX_ONLY, getEffectiveSplitCorpusLight } from '../../constants/studioScene'
+import { STUDIO, getStudioCameraConfig, getStudioOrbitConfig, getStudioCameraStartDistance, DEBUG_LOG_CAMERA_POSITION, USE_HDRI_ONLY, LIGHT_LAYERS, USE_REFERENCE_VOID_LOOK, REFERENCE_VOID, USE_HERO_LOOK, HERO, HERO_LIGHTBOX_ONLY, getEffectiveSplitCorpusLight, USE_STUDIO_CAMERA } from '../../constants/studioScene'
 import { useAppStore } from '../../store/appStore'
 
 /** ВРЕМЕННО: гасим все источники, кроме лайтбокса */
@@ -152,6 +152,48 @@ function StudioCameraSync({ position, target }) {
   return null
 }
 
+/** Clamp pan/zoom: target и высота камеры не уходят под пол / слишком вверх */
+function StudioOrbitLimits({ startTarget, limits }) {
+  const controls = useThree((s) => s.controls)
+  const camera = useThree((s) => s.camera)
+
+  useFrame(() => {
+    if (!controls?.target || !limits) return
+
+    const [sx, sy, sz] = startTarget
+    const { targetOffset, minCameraY, maxCameraY } = limits
+
+    if (targetOffset) {
+      controls.target.x = THREE.MathUtils.clamp(
+        controls.target.x,
+        sx - targetOffset.x,
+        sx + targetOffset.x,
+      )
+      controls.target.y = THREE.MathUtils.clamp(
+        controls.target.y,
+        sy - targetOffset.y,
+        sy + targetOffset.y,
+      )
+      controls.target.z = THREE.MathUtils.clamp(
+        controls.target.z,
+        sz - targetOffset.z,
+        sz + targetOffset.z,
+      )
+    }
+
+    if (minCameraY != null) {
+      camera.position.y = Math.max(camera.position.y, minCameraY)
+    }
+    if (maxCameraY != null) {
+      camera.position.y = Math.min(camera.position.y, maxCameraY)
+    }
+
+    controls.update()
+  })
+
+  return null
+}
+
 function LogStudioCameraStart() {
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls)
@@ -190,8 +232,9 @@ export default function Scene() {
   const loadingDone = useAppStore((s) => s.loadingDone)
   const scale = isMobile ? MOBILE_SCALE : DESKTOP_SCALE
   const refVoid = USE_REFERENCE_VOID_LOOK
-  const camera = refVoid ? REFERENCE_VOID.camera : STUDIO.camera
-  const orbit = refVoid ? REFERENCE_VOID.orbit : STUDIO.orbit
+  const camera = refVoid ? REFERENCE_VOID.camera : getStudioCameraConfig(isMobile)
+  const orbit = refVoid ? REFERENCE_VOID.orbit : getStudioOrbitConfig(isMobile)
+  const maxOrbitDistance = refVoid ? orbit.maxDistance : getStudioCameraStartDistance(camera)
   const object = STUDIO.object
   const shadow = STUDIO.shadow
   const postprocessing = refVoid
@@ -264,6 +307,7 @@ export default function Scene() {
           minHeight: '100vh',
           display: 'block',
           background: canvasBg,
+          touchAction: 'none',
         }}
       >
         <color attach="background" args={[canvasBg]} />
@@ -279,14 +323,21 @@ export default function Scene() {
         <OrbitControls
           makeDefault
           target={camera.target}
-          enablePan={orbit.enablePan}
+          enablePan={orbit.enablePan ?? true}
           enableZoom
+          rotateSpeed={orbit.rotateSpeed ?? 1}
+          zoomSpeed={orbit.zoomSpeed ?? 1}
           minAzimuthAngle={orbit.minAzimuth}
           maxAzimuthAngle={orbit.maxAzimuth}
           minPolarAngle={orbit.minPolar}
           maxPolarAngle={orbit.maxPolar}
           minDistance={orbit.minDistance}
-          maxDistance={orbit.maxDistance}
+          maxDistance={maxOrbitDistance}
+          touches={
+            isMobile
+              ? { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+              : undefined
+          }
           onChange={
             DEBUG_LOG_CAMERA_POSITION
               ? (e) => {
@@ -303,6 +354,9 @@ export default function Scene() {
               : undefined
           }
         />
+        {USE_STUDIO_CAMERA && !refVoid && orbit.panLimits && (
+          <StudioOrbitLimits startTarget={camera.target} limits={orbit.panLimits} />
+        )}
         <StudioCameraSync position={camera.position} target={camera.target} />
         {DEBUG_LOG_CAMERA_POSITION && <LogStudioCameraStart />}
 

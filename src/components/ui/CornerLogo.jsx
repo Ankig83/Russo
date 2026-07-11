@@ -1,10 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { useAppStore } from '../../store/appStore'
 import gsap from 'gsap'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 
 /** Маленькая монограмма в правом верхнем углу — появляется после загрузки */
 export default function CornerLogo() {
   const loadingDone = useAppStore((s) => s.loadingDone)
+  const isMobile = useIsMobile()
+  const size = isMobile ? 36 : 48
   const ref = useRef(null)
 
   useEffect(() => {
@@ -21,14 +24,19 @@ export default function CornerLogo() {
     <a
       ref={ref}
       href="/"
-      className="pointer-events-auto fixed right-5 top-5 z-40 opacity-0"
-      style={{ display: 'block', lineHeight: 0 }}
+      className="pointer-events-auto fixed z-40 opacity-0"
+      style={{
+        display: 'block',
+        lineHeight: 0,
+        top: 'max(0.75rem, var(--safe-top))',
+        right: 'max(0.75rem, var(--safe-right))',
+      }}
       aria-label="Руссо — на главную"
     >
       <svg
         viewBox="0 0 595.3 595.3"
-        width={48}
-        height={48}
+        width={size}
+        height={size}
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>

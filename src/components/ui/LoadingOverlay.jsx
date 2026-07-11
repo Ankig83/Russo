@@ -2,26 +2,34 @@ import { useEffect, useRef, useState } from 'react'
 import { useProgress } from '@react-three/drei'
 import gsap from 'gsap'
 import { useAppStore } from '../../store/appStore'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 
 const MIN_SHOW_MS = 7500
+const MIN_SHOW_MS_MOBILE = 6000
+
+function safeInset(side) {
+  if (typeof window === 'undefined') return 0
+  const v = getComputedStyle(document.documentElement).getPropertyValue(`--safe-${side}`)
+  const n = parseFloat(v)
+  return Number.isFinite(n) ? n : 0
+}
 
 /** Прогресс-бар + текст «загрузка» */
-function LoadingBar({ progress }) {
+function LoadingBar({ progress, isMobile }) {
   const pct = Math.round(progress)
   return (
     <div style={{
       position: 'absolute',
-      bottom: '10%',
+      bottom: isMobile ? 'max(12%, calc(1.5rem + var(--safe-bottom)))' : '10%',
       left: '50%',
       transform: 'translateX(-50%)',
-      width: 220,
+      width: isMobile ? 180 : 220,
       textAlign: 'center',
       userSelect: 'none',
     }}>
-      {/* Подпись */}
       <p style={{
         color: 'rgba(200,160,60,0.7)',
-        fontSize: 11,
+        fontSize: isMobile ? 10 : 11,
         letterSpacing: '0.25em',
         textTransform: 'uppercase',
         marginBottom: 10,
@@ -30,7 +38,6 @@ function LoadingBar({ progress }) {
         загрузка
       </p>
 
-      {/* Трек */}
       <div style={{
         width: '100%',
         height: 1,
@@ -47,7 +54,6 @@ function LoadingBar({ progress }) {
         }} />
       </div>
 
-      {/* Процент */}
       <p style={{
         color: 'rgba(200,160,60,0.5)',
         fontSize: 10,
@@ -61,7 +67,6 @@ function LoadingBar({ progress }) {
   )
 }
 
-/** CSS-анимация: цикл металлических оттенков (золото → серебро → медь → бронза → платина) */
 const SHIMMER_STYLE = `
   @keyframes lgo-metal-shimmer {
     0%   { filter: sepia(1) saturate(4.0) hue-rotate(0deg)   brightness(1.0); }
@@ -78,15 +83,18 @@ const SHIMMER_STYLE = `
 `
 
 export default function LoadingOverlay() {
+  const isMobile = useIsMobile()
+  const logoSize = isMobile ? 240 : 360
+  const cornerInset = isMobile ? 12 : 24
+  const minShowMs = isMobile ? MIN_SHOW_MS_MOBILE : MIN_SHOW_MS
   const { active, progress } = useProgress()
   const wrapRef  = useRef(null)
-  const logoRef  = useRef(null)   /* float — на этом div */
+  const logoRef  = useRef(null)
   const setLoadingDone = useAppStore((s) => s.setLoadingDone)
   const [hidden, setHidden] = useState(false)
   const startMs  = useRef(Date.now())
   const exitDone = useRef(false)
 
-  /* CSS для шиммера */
   useEffect(() => {
     const el = document.createElement('style')
     el.textContent = SHIMMER_STYLE
@@ -94,26 +102,24 @@ export default function LoadingOverlay() {
     return () => document.head.removeChild(el)
   }, [])
 
-  /* Левитация — только float, без вращения */
   useEffect(() => {
     const el = logoRef.current
     if (!el) return
     const t = gsap.to(el, {
-      y: -24,
+      y: isMobile ? -16 : -24,
       duration: 2.4,
       ease: 'sine.inOut',
       yoyo: true,
       repeat: -1,
     })
     return () => t.kill()
-  }, [])
+  }, [isMobile])
 
-  /* Улёт после ≥7.5 сек + GLB загружен */
   useEffect(() => {
     if (active || exitDone.current) return
 
     const elapsed = Date.now() - startMs.current
-    const delay   = Math.max(0, MIN_SHOW_MS - elapsed)
+    const delay   = Math.max(0, minShowMs - elapsed)
 
     const timer = setTimeout(() => {
       if (exitDone.current) return
@@ -123,9 +129,11 @@ export default function LoadingOverlay() {
       const wrap = wrapRef.current
       if (!logo || !wrap) return
 
-      const rect    = logo.getBoundingClientRect()
-      const targetX = window.innerWidth  - rect.right   + rect.width  * 0.5 - 24
-      const targetY = -(rect.top - 24)
+      const rect = logo.getBoundingClientRect()
+      const insetRight = cornerInset + safeInset('right')
+      const insetTop = cornerInset + safeInset('top')
+      const targetX = window.innerWidth - rect.right + rect.width * 0.5 - insetRight
+      const targetY = -(rect.top - insetTop)
 
       gsap.killTweensOf(logo)
 
@@ -137,7 +145,7 @@ export default function LoadingOverlay() {
       tl.to(logo, {
         x: targetX,
         y: targetY,
-        scale: 0.13,
+        scale: isMobile ? 0.15 : 0.13,
         duration: 1.0,
         ease: 'power3.inOut',
       }, 0)
@@ -151,7 +159,7 @@ export default function LoadingOverlay() {
     }, delay)
 
     return () => clearTimeout(timer)
-  }, [active, setLoadingDone])
+  }, [active, setLoadingDone, isMobile, cornerInset, minShowMs])
 
   if (hidden) return null
 
@@ -161,25 +169,23 @@ export default function LoadingOverlay() {
       className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: '#050505' }}
     >
-      <LoadingBar progress={progress} />
+      <LoadingBar progress={progress} isMobile={isMobile} />
 
-      {/* Float-контейнер */}
       <div
         ref={logoRef}
         style={{ willChange: 'transform', transformOrigin: 'center center' }}
       >
-        {/* Объёмная тень на контейнере, шиммер — на img */}
         <div style={{
           filter: 'drop-shadow(0 14px 28px rgba(0,0,0,0.95)) drop-shadow(0 4px 8px rgba(180,100,0,0.45))',
         }}>
           <img
             src="/assets/russo-mark.svg"
             alt=""
-            width={360}
-            height={360}
+            width={logoSize}
+            height={logoSize}
             draggable={false}
             className="lgo-shimmer"
-            style={{ display: 'block' }}
+            style={{ display: 'block', maxWidth: 'min(72vw, 280px)', height: 'auto' }}
           />
         </div>
       </div>

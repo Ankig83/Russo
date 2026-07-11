@@ -323,9 +323,16 @@ export const STUDIO = {
     maxAzimuth: 0.42,
     minPolar: 1.22,
     maxPolar: 1.58,
+    /** Приближение — без изменений; отдаление — не дальше стартового кадра (см. STUDIO_CAMERA_START_DISTANCE) */
     minDistance: 2,
     maxDistance: 12,
-    enablePan: false,
+    enablePan: true,
+    /** Ограничения ПКМ-pan относительно STUDIO.camera.target */
+    panLimits: {
+      targetOffset: { x: 0.3, y: 0.38, z: 0.25 },
+      minCameraY: 0.55,
+      maxCameraY: 2.75,
+    },
   },
   lights: {
     key: {
@@ -476,6 +483,48 @@ export const REFERENCE_VOID = {
   },
 }
 
+/** Дистанция hero-камеры на старте — max zoom out (desktop) */
+export const STUDIO_CAMERA_START_DISTANCE = getStudioCameraStartDistance(STUDIO.camera)
+
+/** Hero-сцена на мобильных (<768px): чуть шире FOV, дальше камера, уже orbit */
+export const STUDIO_MOBILE = {
+  camera: {
+    fov: 40,
+    position: [0.04, 1.72, 7.45],
+    target: [0, 1.58, 0],
+  },
+  orbit: {
+    minAzimuth: -0.32,
+    maxAzimuth: 0.32,
+    minPolar: 1.26,
+    maxPolar: 1.55,
+    minDistance: 1.5,
+    enablePan: false,
+    panLimits: {
+      targetOffset: { x: 0.2, y: 0.28, z: 0.16 },
+      minCameraY: 0.48,
+      maxCameraY: 2.45,
+    },
+    rotateSpeed: 0.72,
+    zoomSpeed: 0.9,
+  },
+}
+
+export function getStudioCameraStartDistance(cam) {
+  const p = cam.position
+  const t = cam.target
+  return Math.hypot(p[0] - t[0], p[1] - t[1], p[2] - t[2])
+}
+
+export function getStudioCameraConfig(isMobile) {
+  return isMobile ? STUDIO_MOBILE.camera : STUDIO.camera
+}
+
+export function getStudioOrbitConfig(isMobile) {
+  if (!isMobile) return STUDIO.orbit
+  return { ...STUDIO.orbit, ...STUDIO_MOBILE.orbit }
+}
+
 export function isReferenceVoidLook() {
   return USE_REFERENCE_VOID_LOOK
 }
@@ -517,7 +566,7 @@ export const CAMERA_INTRO = {
   ease: 'power3.out',
 }
 
-export const DEBUG_LOG_CAMERA_POSITION = true
+export const DEBUG_LOG_CAMERA_POSITION = false
 
 /**
  * GPU-профили — Scene выбирает tier автоматически (desktop → medium).
