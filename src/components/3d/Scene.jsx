@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useRef, useState } from 'react'
+import React, { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { PerspectiveCamera, ContactShadows, OrbitControls, useProgress } from '@react-three/drei'
 import { EffectComposer, Vignette, BrightnessContrast, HueSaturation, N8AO, Bloom, Noise } from '@react-three/postprocessing'
@@ -9,16 +9,20 @@ import StudioBackdrop from './StudioBackdrop'
 import StudioEnvironment from './StudioEnvironment'
 import StudioHorizon from './StudioHorizon'
 import HeroBackdrop from './HeroBackdrop'
+import HeroShadowLight from './HeroShadowLight'
 import HeroLogo from './HeroLogo'
 import ReflectiveFloor from './ReflectiveFloor'
-import CameraIntro from './CameraIntro'
 import StudioLights from './StudioLights'
 import StudioShadowLight from './StudioShadowLight'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useStudioPerformance } from '../../hooks/useStudioPerformance'
 import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
 import { SCENE_BG_STYLE, SCENE_CANVAS_BG, TONE_MAPPING_EXPOSURE } from '../../constants/scene'
-import { STUDIO, DEBUG_LOG_CAMERA_POSITION, USE_HDRI_ONLY, LIGHT_LAYERS, USE_REFERENCE_VOID_LOOK, REFERENCE_VOID, USE_HERO_LOOK, HERO, getEffectiveSplitCorpusLight } from '../../constants/studioScene'
+import { STUDIO, DEBUG_LOG_CAMERA_POSITION, USE_HDRI_ONLY, LIGHT_LAYERS, USE_REFERENCE_VOID_LOOK, REFERENCE_VOID, USE_HERO_LOOK, HERO, HERO_LIGHTBOX_ONLY, getEffectiveSplitCorpusLight } from '../../constants/studioScene'
+import { useAppStore } from '../../store/appStore'
+
+/** ВРЕМЕННО: гасим все источники, кроме лайтбокса */
+const lightboxOnly = USE_HERO_LOOK && HERO_LIGHTBOX_ONLY
 
 /** Камера по умолчанию рендерит только layer 0 — без этого корпус (layer 1) невидим */
 function EnableViewLayers() {
@@ -121,23 +125,60 @@ class WebGLErrorBoundary extends React.Component {
   }
 }
 
+/** Жёстко выставляет STUDIO.camera после OrbitControls — иначе старт съезжает. */
+function StudioCameraSync({ position, target }) {
+  const camera = useThree((s) => s.camera)
+  const controls = useThree((s) => s.controls)
+
+  useLayoutEffect(() => {
+    if (!camera || !controls) return undefined
+
+    const apply = () => {
+      camera.position.set(position[0], position[1], position[2])
+      controls.target.set(target[0], target[1], target[2])
+      controls.update()
+      camera.updateProjectionMatrix()
+    }
+
+    apply()
+    const raf1 = requestAnimationFrame(() => {
+      apply()
+      requestAnimationFrame(apply)
+    })
+
+    return () => cancelAnimationFrame(raf1)
+  }, [camera, controls, position, target])
+
+  return null
+}
+
 function LogStudioCameraStart() {
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls)
   const logged = useRef(false)
 
   useEffect(() => {
-    if (!DEBUG_LOG_CAMERA_POSITION || logged.current) return
-    logged.current = true
-    const target = controls?.target
-    console.log(
-      '[STUDIO camera start] position',
-      camera.position.x.toFixed(2),
-      camera.position.y.toFixed(2),
-      camera.position.z.toFixed(2),
-      '| target',
-      target ? `${target.x.toFixed(2)} ${target.y.toFixed(2)} ${target.z.toFixed(2)}` : STUDIO.camera.target.join(' '),
-    )
+    if (!DEBUG_LOG_CAMERA_POSITION || logged.current) return undefined
+
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (logged.current) return
+        logged.current = true
+        const t = controls?.target
+        console.log(
+          '[STUDIO camera start] position',
+          camera.position.x.toFixed(2),
+          camera.position.y.toFixed(2),
+          camera.position.z.toFixed(2),
+          '| target',
+          t
+            ? `${t.x.toFixed(2)} ${t.y.toFixed(2)} ${t.z.toFixed(2)}`
+            : STUDIO.camera.target.join(' '),
+        )
+      })
+    })
+
+    return () => cancelAnimationFrame(raf)
   }, [camera, controls])
 
   return null
@@ -146,6 +187,7 @@ function LogStudioCameraStart() {
 export default function Scene() {
   const isMobile = useIsMobile()
   const perf = useStudioPerformance()
+  const loadingDone = useAppStore((s) => s.loadingDone)
   const scale = isMobile ? MOBILE_SCALE : DESKTOP_SCALE
   const refVoid = USE_REFERENCE_VOID_LOOK
   const camera = refVoid ? REFERENCE_VOID.camera : STUDIO.camera
@@ -230,13 +272,10 @@ export default function Scene() {
         <PerspectiveCamera
           makeDefault
           fov={camera.fov}
-          position={camera.position}
           near={0.05}
           far={200}
         />
         <EnableViewLayers />
-        <CameraIntro />
-        {DEBUG_LOG_CAMERA_POSITION && <LogStudioCameraStart />}
         <OrbitControls
           makeDefault
           target={camera.target}
@@ -264,22 +303,25 @@ export default function Scene() {
               : undefined
           }
         />
+        <StudioCameraSync position={camera.position} target={camera.target} />
+        {DEBUG_LOG_CAMERA_POSITION && <LogStudioCameraStart />}
 
-        {(!refVoid || REFERENCE_VOID.showBackdrop) && <StudioBackdrop />}
+        {(!refVoid || REFERENCE_VOID.showBackdrop) && !USE_HERO_LOOK && <StudioBackdrop />}
         {USE_HERO_LOOK && <HeroBackdrop />}
-        {(!USE_HDRI_ONLY || refVoid) && <StudioLights />}
-        {!refVoid && <StudioShadowLight />}
+        {USE_HERO_LOOK && <HeroShadowLight />}
+        {!lightboxOnly && (!USE_HDRI_ONLY || refVoid) && <StudioLights />}
+        {!lightboxOnly && !refVoid && <StudioShadowLight />}
 
         <Suspense fallback={null}>
-          {(!refVoid || REFERENCE_VOID.showEnvironment) && <StudioEnvironment />}
+          {!lightboxOnly && (!refVoid || REFERENCE_VOID.showEnvironment) && <StudioEnvironment />}
           {USE_HERO_LOOK
             ? <ReflectiveFloor />
             : (!refVoid || REFERENCE_VOID.showHorizon) && <StudioHorizon />}
-          {USE_HERO_LOOK && <HeroLogo />}
+          {USE_HERO_LOOK && loadingDone && <HeroLogo />}
           <group scale={scale} position={object.position}>
             <Shkaf sceneScale={scale} />
           </group>
-          {(!refVoid || REFERENCE_VOID.contactShadows) && (
+          {(!USE_HERO_LOOK && (!refVoid || REFERENCE_VOID.contactShadows)) && (
             <ContactShadows
               position={shadow.position}
               opacity={shadow.opacity}
@@ -288,7 +330,6 @@ export default function Scene() {
               resolution={contactResolution}
               scale={shadow.scale}
               color={shadow.color}
-              frames={1}
             />
           )}
         </Suspense>

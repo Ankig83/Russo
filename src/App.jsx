@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import CornerLogo from './components/ui/CornerLogo'
 import Home from './pages/Home'
 import Catalog from './pages/Catalog'
 import Portfolio from './pages/Portfolio'
@@ -18,6 +19,7 @@ import NotFound from './pages/NotFound'
 export default function App() {
   return (
     <BrowserRouter>
+      <CornerLogo />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/catalog" element={<Catalog />} />

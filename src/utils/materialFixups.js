@@ -41,6 +41,7 @@ const plainDarkCopperNames = new Set(PLAIN_DARK_COPPER_MATERIALS)
 const doorPanelNames = new Set(DOOR_PANEL_SURFACE_MATERIALS)
 const brassHandleNames = new Set(BRASS_HANDLE_MATERIALS)
 const plaqueNames = new Set(PLAQUE_MATERIALS)
+const rimAndHandleHighlightNames = new Set(['Material.001', 'Материал.003'])
 
 const warnedRoughness = new Set()
 
@@ -154,12 +155,18 @@ function tuneBerestaDoorMaterial(mat, profile) {
 
   const albedo = mat.map
   const normal = mat.normalMap
+  const roughnessSrc = mat.roughnessMap
 
   mat.metalness = 0
   mat.metalnessMap = null
-  mat.roughnessMap = null
   mat.emissive.set('#000000')
   mat.emissiveIntensity = 0
+  mat.transparent = false
+  mat.opacity = 1
+  if ('clearcoat' in mat) mat.clearcoat = 0
+  if ('transmission' in mat) mat.transmission = 0
+  if ('ior' in mat) mat.ior = 1.45
+  if ('sheen' in mat) mat.sheen = 0
 
   if (albedo) {
     mat.color.set(BERESTA_PBR.color)
@@ -167,17 +174,32 @@ function tuneBerestaDoorMaterial(mat, profile) {
     mat.bumpMap = cloneLinearFromMap(albedo)
     mat.bumpScale = profile.bumpScale ?? BERESTA_PBR.bumpScale
     mat.roughness = BERESTA_PBR.roughness
+    if (profile.useRoughnessMap && roughnessSrc) {
+      mat.roughnessMap = cloneLinearFromMap(roughnessSrc)
+      mat.roughness = 1
+    } else {
+      mat.roughnessMap = null
+    }
   } else {
+    mat.roughnessMap = null
     mat.roughness = 0.9
   }
 
   if (profile.useNormalMap && normal) {
     mat.normalMap = cloneLinearFromMap(normal)
-    mat.normalScale.set(1, 1)
+    const ns = profile.normalScale ?? BERESTA_PBR.normalScale ?? 1
+    mat.normalScale.set(ns, ns)
   } else {
     mat.normalMap = null
   }
 
+  if ('sheen' in mat) {
+    mat.sheen = BERESTA_PBR.sheen ?? 0
+    mat.sheenRoughness = BERESTA_PBR.sheenRoughness ?? 0.65
+    if ('sheenColor' in mat) mat.sheenColor.set(BERESTA_PBR.sheenColor ?? '#e8c078')
+  }
+
+  boostTextureDetail(mat, 16)
   applyBerestaEnv(mat)
   mat.needsUpdate = true
 }
@@ -193,6 +215,12 @@ function tuneBerestaSurfaceMaterial(mat, profile) {
   mat.bumpMap = null
   mat.emissive.set('#000000')
   mat.emissiveIntensity = 0
+  mat.transparent = false
+  mat.opacity = 1
+  if ('clearcoat' in mat) mat.clearcoat = 0
+  if ('transmission' in mat) mat.transmission = 0
+  if ('ior' in mat) mat.ior = 1.45
+  if ('sheen' in mat) mat.sheen = 0
 
   if (mat.map) {
     mat.color.set('#ffffff')
@@ -223,6 +251,25 @@ function cloneLinearFromMap(map) {
   const tex = map.clone()
   tex.colorSpace = THREE.NoColorSpace
   return tex
+}
+
+function boostTextureDetail(mat, anisotropy = 16) {
+  ;['map', 'normalMap', 'bumpMap', 'roughnessMap', 'metalnessMap'].forEach((slot) => {
+    const tex = mat[slot]
+    if (!tex) return
+    tex.anisotropy = Math.max(tex.anisotropy ?? 0, anisotropy)
+    tex.minFilter = THREE.LinearMipmapLinearFilter
+    tex.magFilter = THREE.LinearFilter
+    tex.needsUpdate = true
+  })
+}
+
+function isMedallionLeatherRimMesh(meshName = '') {
+  return /circle/i.test(meshName)
+}
+
+function isMedallionLeatherHandleMesh(meshName = '') {
+  return /ручка/i.test(meshName)
 }
 
 /** Патина — только панели дверей (delit + metallic v2, без normal/ORM из GLB) */
@@ -257,23 +304,160 @@ export function applyDoorPatinaMaterialFixups(root) {
   })
 }
 
-/** Ручки — полированная латунь 0.15–0.3 */
+/** Ручки — полированная латунь, читаемый блеск как на рефе */
 function tuneBrassHandleMaterial(mat, meshName = '') {
   if (!mat.isMeshStandardMaterial && !mat.isMeshPhysicalMaterial) return
 
   warnMissingRoughnessMap(mat, meshName)
 
-  mat.metalness = 0.88
-  mat.roughness = mat.roughnessMap ? 1.0 : BRASS_ROUGHNESS
+  mat.color.set('#c9a24a')
+  mat.metalness = 0.9
+  mat.roughness = mat.roughnessMap ? 1.0 : 0.24
   mat.metalnessMap = null
 
-  if ('envMapIntensity' in mat) mat.envMapIntensity = 1.3
-  if ('specularIntensity' in mat) mat.specularIntensity = 0.12
-  if ('clearcoat' in mat) mat.clearcoat = 0
+  if ('envMapIntensity' in mat) mat.envMapIntensity = 1.1
+  if ('specularIntensity' in mat) mat.specularIntensity = 0.16
+  if ('specularColor' in mat) mat.specularColor.set('#e8c878')
+  if ('clearcoat' in mat) mat.clearcoat = 0.14
+  if ('clearcoatRoughness' in mat) mat.clearcoatRoughness = 0.42
   if ('sheen' in mat) mat.sheen = 0
 
   clampRoughnessWithoutMap(mat, meshName, 0.15)
+  boostTextureDetail(mat, 12)
   mat.needsUpdate = true
+}
+
+/** Кожаный ободок медальона — тёмный, с нормалями из GLB */
+function tuneMedallionRimLeatherMaterial(mat) {
+  if (!mat.isMeshStandardMaterial && !mat.isMeshPhysicalMaterial) return
+
+  if (mat.map) {
+    mat.color.set('#2a1810')
+    mat.map = mat.map.clone()
+    mat.map.colorSpace = THREE.SRGBColorSpace
+  } else {
+    mat.color.set('#1e1208')
+  }
+
+  if (mat.normalMap) {
+    mat.normalMap = cloneLinearFromMap(mat.normalMap)
+    mat.normalScale.set(1.75, 1.75)
+  }
+
+  mat.metalness = 0
+  mat.metalnessMap = null
+  mat.roughnessMap = null
+  mat.roughness = 0.86
+  mat.emissive.set('#000000')
+  mat.emissiveIntensity = 0
+
+  if ('envMapIntensity' in mat) mat.envMapIntensity = 0.1
+  if ('specularIntensity' in mat) mat.specularIntensity = 0.035
+  if ('specularColor' in mat) mat.specularColor.set('#6a3f24')
+  if ('clearcoat' in mat) mat.clearcoat = 0
+  if ('sheen' in mat) {
+    mat.sheen = 0.06
+    mat.sheenRoughness = 0.78
+    mat.sheenColor.set('#3a2218')
+  }
+
+  boostTextureDetail(mat, 16)
+  mat.needsUpdate = true
+}
+
+/** Кожаные ручки — чуть светлее ободка, тот же grain */
+function tuneMedallionHandleLeatherMaterial(mat) {
+  if (!mat.isMeshStandardMaterial && !mat.isMeshPhysicalMaterial) return
+
+  if (mat.map) {
+    mat.color.set('#3d2818')
+    mat.map = mat.map.clone()
+    mat.map.colorSpace = THREE.SRGBColorSpace
+  } else {
+    mat.color.set('#2a1810')
+  }
+
+  if (mat.normalMap) {
+    mat.normalMap = cloneLinearFromMap(mat.normalMap)
+    mat.normalScale.set(1.85, 1.85)
+  }
+
+  mat.metalness = 0
+  mat.metalnessMap = null
+  mat.roughnessMap = null
+  mat.roughness = 0.8
+  mat.emissive.set('#000000')
+  mat.emissiveIntensity = 0
+
+  if ('envMapIntensity' in mat) mat.envMapIntensity = 0.12
+  if ('specularIntensity' in mat) mat.specularIntensity = 0.05
+  if ('specularColor' in mat) mat.specularColor.set('#7a4f32')
+  if ('clearcoat' in mat) mat.clearcoat = 0
+  if ('sheen' in mat) {
+    mat.sheen = 0.08
+    mat.sheenRoughness = 0.72
+    mat.sheenColor.set('#4a2c1c')
+  }
+
+  boostTextureDetail(mat, 16)
+  mat.needsUpdate = true
+}
+
+/** Ободок медальона и чёрные кривые ручек — мягкий тёплый объём без белых полос. */
+function tuneRimAndHandleHighlightMaterial(mat, meshName = '') {
+  if (!mat.isMeshStandardMaterial && !mat.isMeshPhysicalMaterial) return
+
+  if (mat.name === 'Материал.003') {
+    mat.color.set('#241812')
+    mat.metalness = 0
+    mat.metalnessMap = null
+    mat.roughnessMap = null
+    mat.normalMap = null
+    mat.roughness = 0.84
+    mat.emissive.set('#000000')
+    mat.emissiveIntensity = 0
+    if ('envMapIntensity' in mat) mat.envMapIntensity = 0.08
+    if ('specularIntensity' in mat) mat.specularIntensity = 0.025
+    if ('specularColor' in mat) mat.specularColor.set('#7a4f32')
+    if ('clearcoat' in mat) mat.clearcoat = 0
+    if ('sheen' in mat) mat.sheen = 0
+    mat.needsUpdate = true
+    return
+  }
+
+  if (isMedallionLeatherRimMesh(meshName)) {
+    tuneMedallionRimLeatherMaterial(mat)
+    return
+  }
+
+  if (isMedallionLeatherHandleMesh(meshName)) {
+    tuneMedallionHandleLeatherMaterial(mat)
+    return
+  }
+
+  tuneMedallionRimLeatherMaterial(mat)
+}
+
+function isRimOrHandleHighlightMaterial(mat) {
+  return mat?.name && rimAndHandleHighlightNames.has(mat.name)
+}
+
+function applyRimAndHandleHighlightFixups(root) {
+  root.traverse((child) => {
+    if (!child.isMesh || !child.material) return
+    const materials = Array.isArray(child.material) ? child.material : [child.material]
+    materials.forEach((mat, slot) => {
+      if (!isRimOrHandleHighlightMaterial(mat)) return
+      const needsClone =
+        isMedallionLeatherRimMesh(child.name) || isMedallionLeatherHandleMesh(child.name)
+      const tuned = needsClone ? mat.clone() : mat
+      tuneRimAndHandleHighlightMaterial(tuned, child.name)
+      if (needsClone) {
+        if (Array.isArray(child.material)) child.material[slot] = tuned
+        else child.material = tuned
+      }
+    })
+  })
 }
 
 /** door_side / door_back / base_copper — satin, roughnessMap из GLB сохраняем */
@@ -459,6 +643,7 @@ export function applyCopperMaterialFixups(root) {
     materials.forEach((mat) => {
       if (isPlaqueMaterial(mat)) tunePlaqueMaterial(mat)
       else if (isBrassHandleMaterial(mat)) tuneBrassHandleMaterial(mat, child.name)
+      else if (isRimOrHandleHighlightMaterial(mat)) tuneRimAndHandleHighlightMaterial(mat)
     })
   })
 }
@@ -573,8 +758,10 @@ export function applyRawMaterialPipeline(root) {
 
   applyEnvMapIntensityFixups(root)
   applyRawCorpusMaterialFixups(root)
+  applyDoorPanelMaterialFixups(root)
   applyPlainCopperMaterialFixups(root)
   applyPlainDarkCopperMaterialFixups(root)
+  applyRimAndHandleHighlightFixups(root)
   applyBerestaMaterialFixups(root)
   validateMaterialRoughness(root)
   if (getEffectiveSplitCorpusLight()) assignShkafLightLayers(root)
@@ -584,6 +771,7 @@ export function applyStudioMaterialFixups(root) {
   applyRawCorpusMaterialFixups(root)
   applyCopperMaterialFixups(root)
   applyPlainDarkCopperMaterialFixups(root)
+  applyRimAndHandleHighlightFixups(root)
   applyBerestaMaterialFixups(root)
   applyDoorPatinaMaterialFixups(root)
   validateMaterialRoughness(root)

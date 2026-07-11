@@ -25,6 +25,24 @@ const lightboxFragment = `
   }
 `
 
+function LightboxBacking() {
+  const { lightbox, background } = HERO
+  return (
+    <mesh
+      position={[
+        lightbox.position[0],
+        lightbox.position[1],
+        lightbox.position[2] - 0.03,
+      ]}
+      renderOrder={-2}
+      raycast={() => null}
+    >
+      <planeGeometry args={[lightbox.width, lightbox.height]} />
+      <meshBasicMaterial color={background} toneMapped={false} />
+    </mesh>
+  )
+}
+
 function LightboxPanel() {
   const { lightbox } = HERO
   const uniforms = useRef({
@@ -96,6 +114,36 @@ function RimLight() {
   )
 }
 
+/**
+ * Контурный свет на дверки (пара лево/право, конфиг из HERO).
+ * layers.set(doors) → ТОЛЬКО layer 0: боковины корпуса (layer 1) не задевает.
+ */
+function DoorRimLight({ config }) {
+  const ref = useRef(null)
+  const target = useMemo(
+    () => new THREE.Vector3(...config.aimAt),
+    [config.aimAt[0], config.aimAt[1], config.aimAt[2]],
+  )
+
+  useLayoutEffect(() => {
+    const light = ref.current
+    if (!light) return
+    light.layers.set(LIGHT_LAYERS.doors)
+    light.lookAt(target)
+  }, [target])
+
+  return (
+    <rectAreaLight
+      ref={ref}
+      position={config.position}
+      width={config.width}
+      height={config.height}
+      intensity={config.intensity}
+      color={config.color}
+    />
+  )
+}
+
 /** Геройский фон: светящаяся стена-лайтбокс + рассеянный fill + ободок */
 export default function HeroBackdrop() {
   useEffect(() => {
@@ -104,9 +152,14 @@ export default function HeroBackdrop() {
 
   return (
     <group raycast={() => null}>
+      <LightboxBacking />
       <LightboxPanel />
       <FillAreaLight />
       <RimLight />
+      <DoorRimLight config={HERO.doorRimLeft} />
+      <DoorRimLight config={HERO.doorRimRight} />
+      <DoorRimLight config={HERO.doorFrontSoft} />
+      <DoorRimLight config={HERO.doorMedallion} />
     </group>
   )
 }

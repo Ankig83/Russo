@@ -5,6 +5,10 @@ const assetBase = import.meta.env.BASE_URL
 export const SHKAF_MODEL_VERSION = '33'
 export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
 
+/** Ножки model / model.001 из нового экспорта shkaf_.glb */
+export const SHKAF_LEGS_MODEL_VERSION = '1'
+export const SHKAF_LEGS_MODEL_PATH = `${assetBase}models/shkaf-legs.glb?v=${SHKAF_LEGS_MODEL_VERSION}`
+
 /** HDRI из GLB шкафа — не используем, сцена настраивается отдельно */
 export const USE_GLB_ENVIRONMENT = false
 
@@ -92,11 +96,12 @@ export const BERESTA_MATERIALS = [
  * mesh в GLB: Beresta_L/R → M_Beresta_Final, Btresta_inside → insige, Beck_W → bes=resta_W_M
  */
 export const BERESTA_MATERIAL_PROFILES = {
-  /** Круги на дверях — береста_темная + normal из GLB */
+  /** Круги на дверях — береста_темная из GLB, bump от albedo */
   'M_Beresta_Final.001': {
     kind: 'door',
-    bumpScale: 0.024,
-    useNormalMap: true,
+    bumpScale: 0.1,
+    useNormalMap: false,
+    useRoughnessMap: false,
   },
   /** Внутренняя обивка ящиков — bereza_medallion_texture */
   'berestf_insige_M.001': {
@@ -124,7 +129,7 @@ export const BERESTA_MESH_MAP = {
  * Простая тёмная медь (без текстуры): корпус shkaf (Material.002) и ножки
  * leg_beck_o / leg_front_o (Material.004). Единый плоский медный тон, roughness 0.4.
  */
-export const PLAIN_DARK_COPPER_MATERIALS = ['Material.002', 'Material.004']
+export const PLAIN_DARK_COPPER_MATERIALS = ['Material.002', 'Material.004', 'M_BlackCopper_v3']
 
 /**
  * Панель двери (сама дверка, БЕЗ бересты и круга) — материал patina_PBR
@@ -164,11 +169,21 @@ export const CABINET_SCENE_ROOTS = [
 ]
 
 /**
- * Ножки из GLB — кривая тонкая геометрия. Скрываем и заменяем процедурным
- * Х-каркасом (CabinetLegs.jsx). Если понадобится вернуть оригинал — false.
+ * Ножки: shkaf-legs.glb (model / model.001 из shkaf_.glb).
+ * Старые leg_* в shkaf.glb заменяются в attachGlbLegs до placement.
  */
 export const GLB_LEG_NODES = ['leg_front_o', 'leg_beck_o']
-export const USE_PROCEDURAL_LEGS = true
+/**
+ * Позиции ножек на узле shkaf — из shkaf-legs.glb (геометрия центрирована в mesh,
+ * в отличие от main shkaf.glb где offset вшит в вершины).
+ */
+export const GLB_LEG_TRANSFORMS = {
+  leg_front_o: { position: [6.8722, 0.2391, 0.6595] },
+  leg_beck_o: { position: [6.8722, 0.2391, 0.2335] },
+}
+/** bbox.min.y шкафа с ножками — fallback, если ножки ещё не в дереве */
+export const GLB_LEG_FLOOR_MIN_Y = 0.0222
+export const USE_PROCEDURAL_LEGS = false
 
 /** Ящики без текстовой подписи (кликабельны, но label не показываем) */
 export const HIDDEN_DRAWER_LABELS = []

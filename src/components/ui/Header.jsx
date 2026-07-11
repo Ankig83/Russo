@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useShkafStore } from '../../store/shkafStore'
 
@@ -8,15 +7,15 @@ export default function Header() {
   const doorsOpen = useShkafStore((s) => s.doorsOpen)
 
   return (
-    <header className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-6 md:p-8">
-      <Link
+    <header className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-end p-6 pb-8 md:p-8 md:pb-10">
+      {/* <Link
         to="/"
         className="pointer-events-auto w-fit text-2xl font-bold tracking-[0.3em] text-neutral-100 md:text-3xl"
       >
         РУССО
-      </Link>
+      </Link> */}
 
-      <div className="flex flex-col items-center gap-2 pb-4">
+      <div className="flex flex-col items-center gap-2">
           <div className={doorsOpen ? '' : 'animate-bounce'}>
             <svg
               className="h-6 w-6 text-neutral-400"

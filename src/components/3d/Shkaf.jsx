@@ -1,11 +1,13 @@
 import { useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useGLTF } from '@react-three/drei'
+import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import gsap from 'gsap'
 import { drawerSections } from '../../constants/sections'
 import {
   SHKAF_MODEL_PATH,
+  SHKAF_LEGS_MODEL_PATH,
   SHKAF_NODE_MAP,
   SHKAF_ROOT_NAME,
   HIDE_SCENE_DECOR,
@@ -30,8 +32,9 @@ import {
 } from '../../constants/shkaf'
 import { useShkafStore } from '../../store/shkafStore'
 import FitCamera from './FitCamera'
-import { USE_STUDIO_CAMERA, USE_HDRI_ONLY } from '../../constants/studioScene'
+import { USE_STUDIO_CAMERA, USE_HDRI_ONLY, LIGHT_LAYERS, getEffectiveSplitCorpusLight, STUDIO } from '../../constants/studioScene'
 import { getCabinetBounds, getCabinetPlacement, findByName } from '../../utils/cabinetBounds'
+import { attachGlbLegs } from '../../utils/attachGlbLegs'
 import {
   findDrawerNodeFromHit,
   findDrawerSectionFromHit,
@@ -46,6 +49,7 @@ import {
 } from '../../utils/materialFixups'
 
 useGLTF.preload(SHKAF_MODEL_PATH)
+useGLTF.preload(SHKAF_LEGS_MODEL_PATH)
 
 const HOVER_NUDGE = 0.032
 const HOVER_WIGGLE_DURATION = 0.45
@@ -54,6 +58,69 @@ const HOVER_EMISSIVE_INTENSITY = 0.32
 
 /** Ящики без анимации выдвижения при hover — только подсветка */
 const HOVER_HIGHLIGHT_ONLY = new Set()
+
+/** Свет внутри шкафа должен доставать до обоих слоёв (двери + медный корпус) */
+function enableBothLightLayers(light) {
+  if (!light) return
+  light.layers.enable(LIGHT_LAYERS.doors)
+  if (getEffectiveSplitCorpusLight()) light.layers.enable(LIGHT_LAYERS.corpus)
+}
+
+/**
+ * Внутренний спот шкафа — мягкий верхний акцент (лёгкая тень под полками).
+ * При split corpus light светит на оба слоя.
+ */
+function InteriorSpot({ position, target, intensity, castShadow, distance }) {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    enableBothLightLayers(ref.current)
+  }, [])
+
+  return (
+    <spotLight
+      ref={ref}
+      position={position}
+      color="#ffcf8a"
+      intensity={intensity}
+      angle={0.95}
+      penumbra={1}
+      distance={distance}
+      decay={2}
+      castShadow={castShadow}
+      shadow-mapSize={castShadow ? 512 : undefined}
+      shadow-bias={castShadow ? -0.00008 : undefined}
+      shadow-camera-near={castShadow ? 0.08 : undefined}
+      shadow-camera-far={castShadow ? distance : undefined}
+    >
+      <object3D attach="target" position={target} />
+    </spotLight>
+  )
+}
+
+/**
+ * Тёплый заполняющий омни-свет внутри шкафа (как soft-свет в Blender при
+ * открытии дверей). Point light светит во все стороны — заливает заднюю
+ * стенку, бока, полки и пол, а не только пятно под потолком.
+ */
+function InteriorFill({ position, intensity, distance }) {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    enableBothLightLayers(ref.current)
+  }, [])
+
+  return (
+    <pointLight
+      ref={ref}
+      position={position}
+      color="#ffd9a6"
+      intensity={intensity}
+      distance={distance}
+      decay={2}
+    />
+  )
+}
 
 /** Имена нод-табличек — не подсвечивать при hover */
 const TABL_NODE_NAMES = new Set(Object.values(DRAWER_TABL_NODES))
@@ -88,6 +155,322 @@ function isUnderInactiveDrawerNode(object) {
 
 const _pullDir = new THREE.Vector3()
 const _parentMatrix = new THREE.Matrix4()
+
+const INNER_DOOR_BACKFACE_SUFFIX = '__inner_copper_backface'
+const MEDALLION_RING_NODES = {
+  left: 'BézierCircle.001',
+  right: 'BézierCircle',
+}
+
+function createInnerDoorCopperMaterial(sourceMaterial) {
+  const source = Array.isArray(sourceMaterial) ? sourceMaterial[0] : sourceMaterial
+  const material = source?.clone?.() ?? new THREE.MeshStandardMaterial({ name: 'Material.002' })
+
+  // Внутренняя сторона дверей должна совпадать с медью корпуса shkaf (Material.002),
+  // но рендериться только с обратной стороны существующей геометрии дверки.
+  material.side = THREE.BackSide
+  material.polygonOffset = true
+  material.polygonOffsetFactor = -1
+  material.polygonOffsetUnits = -1
+  material.needsUpdate = true
+
+  return material
+}
+
+function createWarmRivetMaterial(name = 'warm_dark_brass_rivet', { rim = false } = {}) {
+  return new THREE.MeshPhysicalMaterial({
+    name,
+    color: rim ? '#c9a24a' : '#b8893a',
+    metalness: 0.92,
+    roughness: rim ? 0.24 : 0.2,
+    envMapIntensity: 0.9,
+    clearcoat: rim ? 0.08 : 0.16,
+    clearcoatRoughness: 0.38,
+    specularIntensity: rim ? 0.12 : 0.18,
+    specularColor: '#e8c878',
+    side: THREE.DoubleSide,
+  })
+}
+
+function setInnerDoorBackfacesVisible(model, visible) {
+  ;(['left', 'right']).forEach((side) => {
+    const door = findDoorPivotNode(model, side)
+    const innerFace = door?.getObjectByName(`${door.name}${INNER_DOOR_BACKFACE_SUFFIX}`)
+    if (innerFace) innerFace.visible = visible
+  })
+}
+
+function getObjectBoxInDoorLocal(door, object) {
+  door.updateWorldMatrix(true, false)
+  object.updateWorldMatrix(true, false)
+
+  const worldBox = new THREE.Box3().setFromObject(object)
+  const localBox = new THREE.Box3()
+  const points = [
+    [worldBox.min.x, worldBox.min.y, worldBox.min.z],
+    [worldBox.min.x, worldBox.min.y, worldBox.max.z],
+    [worldBox.min.x, worldBox.max.y, worldBox.min.z],
+    [worldBox.min.x, worldBox.max.y, worldBox.max.z],
+    [worldBox.max.x, worldBox.min.y, worldBox.min.z],
+    [worldBox.max.x, worldBox.min.y, worldBox.max.z],
+    [worldBox.max.x, worldBox.max.y, worldBox.min.z],
+    [worldBox.max.x, worldBox.max.y, worldBox.max.z],
+  ]
+
+  points.forEach(([x, y, z]) => {
+    localBox.expandByPoint(door.worldToLocal(new THREE.Vector3(x, y, z)))
+  })
+
+  return localBox
+}
+
+function findDoorRing(_model, door, side) {
+  if (!door) return null
+
+  let best = null
+  let bestCount = 0
+  door.traverse((child) => {
+    if (!child.isMesh) return
+    const name = (child.name ?? '').normalize('NFC')
+    const match = side === 'left'
+      ? /001$/i.test(name) && /circle/i.test(name)
+      : /circle/i.test(name) && !/001/i.test(name)
+    if (!match) return
+    const count = child.geometry?.getAttribute('position')?.count ?? 0
+    if (count > bestCount) {
+      best = child
+      bestCount = count
+    }
+  })
+
+  return best
+}
+
+const _ringPoint = new THREE.Vector3()
+
+function removeMedallionRivets(root) {
+  if (!root) return
+  const stale = []
+  root.traverse((child) => {
+    if (child.isMesh && child.name.startsWith('medallion_rivet')) stale.push(child)
+  })
+  stale.forEach((mesh) => mesh.parent?.remove(mesh))
+}
+
+function getRingPlaneAxes(ringBox) {
+  const size = new THREE.Vector3()
+  ringBox.getSize(size)
+  const axes = ['x', 'y', 'z'].sort((a, b) => size[a] - size[b])
+  return {
+    normalAxis: axes[0],
+    axisA: axes[1],
+    axisB: axes[2],
+    faceValue: ringBox.max[axes[0]] + 0.002,
+  }
+}
+
+function getRingGeometryBox(ring) {
+  const geometry = ring?.geometry
+  if (!geometry) return null
+
+  geometry.computeBoundingBox?.()
+  if (geometry.boundingBox) return geometry.boundingBox
+
+  const posAttr = geometry.getAttribute('position')
+  if (!posAttr) return null
+
+  const box = new THREE.Box3().setFromBufferAttribute(posAttr)
+  geometry.boundingBox = box
+  return box
+}
+
+function sampleMedallionArcPositions(door, side, count, radiusScale = 1) {
+  const beresta = door.getObjectByName(side === 'left' ? 'Beresta_L' : 'Beresta_R')
+  const ring = findDoorRing(null, door, side)
+  if (!beresta?.isMesh) return []
+
+  const berestaBox = getObjectBoxInDoorLocal(door, beresta)
+  const ringBox = ring?.isMesh ? getObjectBoxInDoorLocal(door, ring) : berestaBox
+
+  const center = berestaBox.getCenter(new THREE.Vector3())
+  center.x = side === 'left' ? berestaBox.max.x : berestaBox.min.x
+  const outerX = side === 'left' ? berestaBox.min.x : berestaBox.max.x
+  const radius = Math.abs(outerX - center.x) * radiusScale
+  const z = ringBox.max.z + 0.004
+
+  const startAngle = side === 'left' ? Math.PI / 2 : -Math.PI / 2
+  const endAngle = side === 'left' ? (Math.PI * 3) / 2 : Math.PI / 2
+  const positions = []
+
+  for (let i = 0; i < count; i += 1) {
+    const t = count === 1 ? 0 : i / (count - 1)
+    const angle = THREE.MathUtils.lerp(startAngle, endAngle, t)
+    positions.push(new THREE.Vector3(
+      center.x + Math.cos(angle) * radius,
+      center.y + Math.sin(angle) * radius,
+      z,
+    ))
+  }
+
+  return positions
+}
+
+function sampleRingOuterEdgePositions(ring, count, band = 'outer') {
+  if (!ring?.isMesh?.geometry || count < 1) return []
+
+  const ringBox = getRingGeometryBox(ring)
+  if (!ringBox) return []
+
+  const posAttr = ring.geometry.getAttribute('position')
+  if (!posAttr) return []
+
+  const { normalAxis, axisA, axisB, faceValue } = getRingPlaneAxes(ringBox)
+  const centerA = (ringBox.min[axisA] + ringBox.max[axisA]) * 0.5
+  const centerB = (ringBox.min[axisB] + ringBox.max[axisB]) * 0.5
+
+  const candidates = []
+  for (let i = 0; i < posAttr.count; i += 1) {
+    _ringPoint.fromBufferAttribute(posAttr, i)
+
+    const a = _ringPoint[axisA] - centerA
+    const b = _ringPoint[axisB] - centerB
+    candidates.push({
+      point: _ringPoint.clone(),
+      angle: Math.atan2(b, a),
+      radius: Math.hypot(a, b),
+    })
+  }
+
+  if (candidates.length === 0) return []
+
+  const maxRadius = candidates.reduce((max, entry) => Math.max(max, entry.radius), 0)
+  const pool = candidates.filter((entry) => {
+    if (band === 'outer') return entry.radius >= maxRadius * 0.93
+    return entry.radius >= maxRadius * 0.72 && entry.radius <= maxRadius * 0.84
+  })
+  const sorted = (pool.length >= count ? pool : candidates)
+    .sort((a, b) => a.angle - b.angle)
+
+  const positions = []
+  for (let i = 0; i < count; i += 1) {
+    const entry = sorted[Math.min(sorted.length - 1, Math.floor((i / count) * sorted.length))]
+    entry.point[normalAxis] = Math.max(entry.point[normalAxis], faceValue)
+    positions.push(entry.point)
+  }
+
+  return positions
+}
+
+const _ringFaceOffset = new THREE.Vector3()
+const _ringCenterLocal = new THREE.Vector3()
+const _ringWorldPos = new THREE.Vector3()
+const _ringDoorPos = new THREE.Vector3()
+
+function pushRivetOntoRingFace(localPos, ringBox, normalAxis, axisA, axisB, outward = 0.006) {
+  _ringCenterLocal.set(
+    (ringBox.min.x + ringBox.max.x) * 0.5,
+    (ringBox.min.y + ringBox.max.y) * 0.5,
+    (ringBox.min.z + ringBox.max.z) * 0.5,
+  )
+
+  const dx = localPos[axisA] - _ringCenterLocal[axisA]
+  const dy = localPos[axisB] - _ringCenterLocal[axisB]
+  const len = Math.hypot(dx, dy) || 1
+
+  _ringFaceOffset.copy(localPos)
+  _ringFaceOffset[axisA] += (dx / len) * outward
+  _ringFaceOffset[axisB] += (dy / len) * outward
+  _ringFaceOffset[normalAxis] = ringBox.max[normalAxis] + 0.003
+
+  return _ringFaceOffset
+}
+
+function addMedallionRivets(model) {
+  const geometry = new THREE.SphereGeometry(1, 8, 8)
+  const rimMaterial = createWarmRivetMaterial('medallion_edge_rivets', { rim: true })
+  rimMaterial.depthTest = true
+  rimMaterial.polygonOffset = true
+  rimMaterial.polygonOffsetFactor = -3
+  rimMaterial.polygonOffsetUnits = -3
+
+  ;(['left', 'right']).forEach((side) => {
+    const door = findDoorPivotNode(model, side)
+    const ring = findDoorRing(model, door, side)
+    if (!door || !ring?.isMesh) return
+
+    removeMedallionRivets(door)
+    removeMedallionRivets(ring)
+
+    ring.geometry.computeBoundingBox?.()
+    const ringBox = getRingGeometryBox(ring)
+    if (!ringBox) return
+
+    const ringSize = new THREE.Vector3()
+    ringBox.getSize(ringSize)
+    const rivetRadius = THREE.MathUtils.clamp(
+      Math.max(ringSize.x, ringSize.y, ringSize.z) * 0.026,
+      0.0011,
+      0.0021,
+    )
+    const rows = [
+      { band: 'outer', count: 52 },
+      { band: 'inner', count: 48 },
+    ]
+
+    const plane = getRingPlaneAxes(ringBox)
+    door.updateWorldMatrix(true, true)
+    ring.updateWorldMatrix(true, true)
+
+    let index = 0
+    rows.forEach(({ band, count }) => {
+      let positions = sampleRingOuterEdgePositions(ring, count, band)
+      let usedArcFallback = false
+      if (positions.length === 0) {
+        positions = sampleMedallionArcPositions(door, side, count, band === 'inner' ? 0.9 : 1)
+        usedArcFallback = true
+      }
+      positions.forEach((localPos) => {
+        if (usedArcFallback) {
+          _ringDoorPos.copy(localPos)
+          _ringDoorPos.z += 0.004
+        } else {
+          const onFace = pushRivetOntoRingFace(
+            localPos,
+            ringBox,
+            plane.normalAxis,
+            plane.axisA,
+            plane.axisB,
+            Math.max(ringSize[plane.normalAxis] * 0.55, 0.005),
+          )
+          _ringWorldPos.copy(ring.localToWorld(onFace.clone()))
+          _ringDoorPos.copy(door.worldToLocal(_ringWorldPos))
+        }
+
+        const rivet = new THREE.Mesh(geometry, rimMaterial)
+        rivet.name = `medallion_rivet_${side}_${index}`
+        rivet.position.copy(_ringDoorPos)
+        rivet.scale.setScalar(rivetRadius)
+        rivet.castShadow = true
+        rivet.receiveShadow = true
+        rivet.renderOrder = 8
+        rivet.layers.set(LIGHT_LAYERS.doors)
+        door.add(rivet)
+        index += 1
+      })
+    })
+  })
+}
+
+function tuneHandleRivets(model) {
+  const material = createWarmRivetMaterial('handle_rivet_warm_metal')
+  model.traverse((child) => {
+    if (!child.isMesh || !child.name.startsWith('заклепа_ручка')) return
+    child.material = material
+    child.castShadow = true
+    child.receiveShadow = true
+    child.renderOrder = 7
+  })
+}
 
 function getPairedDrawerName(name) {
   return getDrawerBodyName(name) ?? name
@@ -141,6 +524,25 @@ function attachCabinetSceneRoots(model) {
 
   attachToShkaf(findDoorPivotNode(model, 'left'))
   attachToShkaf(findDoorPivotNode(model, 'right'))
+
+  ;(['left', 'right']).forEach((side) => {
+    const door = findDoorPivotNode(model, side)
+    if (!door?.isMesh || door.getObjectByName(`${door.name}${INNER_DOOR_BACKFACE_SUFFIX}`)) {
+      return
+    }
+
+    const innerFace = new THREE.Mesh(
+      door.geometry,
+      createInnerDoorCopperMaterial(shkafRoot.material),
+    )
+    innerFace.name = `${door.name}${INNER_DOOR_BACKFACE_SUFFIX}`
+    innerFace.raycast = () => null
+    innerFace.castShadow = false
+    innerFace.receiveShadow = true
+    innerFace.renderOrder = 1
+    innerFace.visible = false
+    door.add(innerFace)
+  })
 }
 
 function ensureDoorPivotsVisible(model) {
@@ -163,7 +565,29 @@ function hideSceneDecor(model) {
   ensureDoorPivotsVisible(model)
 }
 
+function ensureDoorDetailShadows(model) {
+  model.traverse((child) => {
+    if (!child.isMesh) return
+    const name = child.name ?? ''
+
+    if (/ручка|заклепа/i.test(name) || name.startsWith('medallion_rivet')) {
+      child.castShadow = true
+    }
+
+    if (
+      /Beresta|door_left|door_right|BézierCircle|Circle|patina|ручка/i.test(name)
+      || name.startsWith('medallion_rivet')
+    ) {
+      child.receiveShadow = true
+    }
+  })
+}
+
 function finalizeShkafSceneGraph(model) {
+  addMedallionRivets(model)
+  tuneHandleRivets(model)
+  ensureDoorDetailShadows(model)
+
   INACTIVE_DRAWER_NODES.forEach((name) => {
     const node = model.getObjectByName(name)
     node?.traverse((child) => {
@@ -171,8 +595,13 @@ function finalizeShkafSceneGraph(model) {
     })
   })
 
-  // Прячем кривые GLB-ножки — заменяем процедурным Х-каркасом (CabinetLegs)
-  if (USE_PROCEDURAL_LEGS) {
+  // Старые ножки в shkaf.glb — убираем; новые вешает attachGlbLegs до placement
+  if (!USE_PROCEDURAL_LEGS) {
+    GLB_LEG_NODES.forEach((name) => {
+      const node = model.getObjectByName(name)
+      node?.parent?.remove(node)
+    })
+  } else {
     GLB_LEG_NODES.forEach((name) => {
       const node = model.getObjectByName(name)
       if (node) node.visible = false
@@ -234,6 +663,8 @@ function finalizeShkafSceneGraph(model) {
 
 function Shkaf({ sceneScale = 1 }) {
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
+  const { scene: legsScene } = useGLTF(SHKAF_LEGS_MODEL_PATH)
+  const controls = useThree((s) => s.controls)
   const rootRef = useRef()
   const leftDoorRef = useRef()
   const rightDoorRef = useRef()
@@ -255,10 +686,14 @@ function Shkaf({ sceneScale = 1 }) {
     if (USE_RAW_GLB_MATERIALS) {
       applyRawMaterialPipeline(cloned)
       finalizeShkafSceneGraph(cloned)
+      if (!USE_PROCEDURAL_LEGS) {
+        attachGlbLegs(cloned, legsScene)
+      }
     }
     return cloned
-  }, [scene])
+  }, [scene, legsScene])
   const shkafGroup = useMemo(() => findByName(model, SHKAF_ROOT_NAME), [model])
+  const alignOffset = STUDIO.object.alignOffset ?? [0, 0, 0]
   const { position: placement, alignedCenter, size, box } = useMemo(
     () => getCabinetPlacement(model, SHKAF_ROOT_NAME),
     [model],
@@ -320,6 +755,8 @@ function Shkaf({ sceneScale = 1 }) {
       closedRotations.current.right = right.rotation[axis]
     }
 
+    setInnerDoorBackfacesVisible(model, false)
+
     console.log('РУССО: двери найдены', {
       door_left: left?.name ?? null,
       door_right: right?.name ?? null,
@@ -348,8 +785,11 @@ function Shkaf({ sceneScale = 1 }) {
       }
 
       const axis = DOOR_ROTATION_AXIS
+      setInnerDoorBackfacesVisible(model, open)
+
       const tl = gsap.timeline({
         onComplete: () => {
+          if (!open) setInnerDoorBackfacesVisible(model, false)
           setDoorsOpen(open)
           setAnimating(false)
         },
@@ -528,8 +968,23 @@ function Shkaf({ sceneScale = 1 }) {
   )
 
   const handlePointerDown = useCallback((event) => {
+    event.stopPropagation()
     pointerDownPos.current = { x: event.clientX, y: event.clientY }
-  }, [])
+    if (controls) controls.enabled = false
+  }, [controls])
+
+  const handlePointerUp = useCallback((event) => {
+    event.stopPropagation()
+    if (controls) controls.enabled = true
+  }, [controls])
+
+  useEffect(() => {
+    const onWindowPointerUp = () => {
+      if (controls) controls.enabled = true
+    }
+    window.addEventListener('pointerup', onWindowPointerUp)
+    return () => window.removeEventListener('pointerup', onWindowPointerUp)
+  }, [controls])
 
   const handleClick = useCallback(
     (event) => {
@@ -571,23 +1026,57 @@ function Shkaf({ sceneScale = 1 }) {
     [doorsOpen, applyDrawerHover, clearDrawerHover],
   )
 
-  // Подсветка с потолка шкафа
+  // Подсветка с потолка шкафа — мягкий верхний акцент
   const ceilingY = box.max.y - 0.06
   const lightZ = center.z + size.z * 0.08
   const targetY = center.y - size.y * 0.05
   const lightDist = size.y * 1.8
-  const lightIntensity = doorsOpen ? 1.4 : 0
+  const lightIntensity = doorsOpen ? 0.55 : 0
   const INTERIOR_LIGHTS = [
     { pos: [center.x - size.x * 0.28, ceilingY, lightZ], target: [center.x - size.x * 0.28, targetY, center.z], castShadow: false },
-    { pos: [center.x, ceilingY, lightZ], target: [center.x, targetY, center.z], castShadow: true },
     { pos: [center.x + size.x * 0.28, ceilingY, lightZ], target: [center.x + size.x * 0.28, targetY, center.z], castShadow: false },
   ]
 
+  // Тёплый заполняющий свет — у задней стенки, разнесён по бокам.
+  // Центр не светим напрямую: иначе внутренняя береста выбивается горячим пятном.
+  const fillDist = size.y * 3.0
+  const fillIntensity = doorsOpen ? 1.35 : 0
+  const INTERIOR_FILLS = [
+    [center.x - size.x * 0.34, center.y + size.y * 0.02, center.z - size.z * 0.22],
+    [center.x + size.x * 0.34, center.y + size.y * 0.02, center.z - size.z * 0.22],
+  ]
+
+  // Фронтальные споты на ящики (их лицо смотрит наружу — fill изнутри не достаёт).
+  // Стоят спереди-сверху, в плоскости открытых дверей.
+  const drawerSpotDist = size.y * 2.2
+  const DRAWER_SPOTS = [
+    // нижний модуль — 4 плашки навигации
+    {
+      pos: [center.x, center.y + size.y * 0.02, box.max.z + size.z * 0.42],
+      target: [center.x, center.y - size.y * 0.36, center.z + size.z * 0.3],
+      intensity: doorsOpen ? 3.0 : 0,
+    },
+    // средние два ящика
+    {
+      pos: [center.x, center.y + size.y * 0.34, box.max.z + size.z * 0.42],
+      target: [center.x, center.y - size.y * 0.06, center.z + size.z * 0.3],
+      intensity: doorsOpen ? 2.6 : 0,
+    },
+  ]
+
   return (
-    <group ref={rootRef} position={placement}>
+    <group
+      ref={rootRef}
+      position={[
+        placement[0] + alignOffset[0],
+        placement[1] + alignOffset[1],
+        placement[2] + alignOffset[2],
+      ]}
+    >
       <primitive
         object={model}
         onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
         onClick={handleClick}
         onPointerOver={handlePointerOver}
       />
@@ -596,23 +1085,31 @@ function Shkaf({ sceneScale = 1 }) {
 
       {!USE_HDRI_ONLY &&
         INTERIOR_LIGHTS.map(({ pos, target, castShadow: shadowOn }, i) => (
-          <spotLight
+          <InteriorSpot
             key={i}
             position={pos}
-            color="#ffcf8a"
+            target={target}
             intensity={lightIntensity}
-            angle={0.62}
-            penumbra={0.95}
-            distance={lightDist}
-            decay={2}
             castShadow={shadowOn}
-            shadow-mapSize={shadowOn ? 512 : undefined}
-            shadow-bias={shadowOn ? -0.00008 : undefined}
-            shadow-camera-near={shadowOn ? 0.08 : undefined}
-            shadow-camera-far={shadowOn ? lightDist : undefined}
-          >
-            <object3D attach="target" position={target} />
-          </spotLight>
+            distance={lightDist}
+          />
+        ))}
+
+      {!USE_HDRI_ONLY &&
+        INTERIOR_FILLS.map((pos, i) => (
+          <InteriorFill key={i} position={pos} intensity={fillIntensity} distance={fillDist} />
+        ))}
+
+      {!USE_HDRI_ONLY &&
+        DRAWER_SPOTS.map(({ pos, target, intensity }, i) => (
+          <InteriorSpot
+            key={i}
+            position={pos}
+            target={target}
+            intensity={intensity}
+            castShadow={false}
+            distance={drawerSpotDist}
+          />
         ))}
 
       {!USE_STUDIO_CAMERA && (

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import Scene from '../components/3d/Scene'
 import Header from '../components/ui/Header'
+import LoadingOverlay from '../components/ui/LoadingOverlay'
 import { useShkafStore } from '../store/shkafStore'
 
 /** Главная страница с интерактивным 3D-шкафом */
@@ -16,6 +17,7 @@ export default function Home() {
     <div className="relative h-dvh min-h-screen w-screen overflow-hidden">
       <Scene />
       <Header />
+      <LoadingOverlay />
     </div>
   )
 }

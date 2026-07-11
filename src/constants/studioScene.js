@@ -34,6 +34,13 @@ export const LIGHT_LAYERS = {
  */
 export const USE_HERO_LOOK = true
 
+/**
+ * ВРЕМЕННО: только лайтбокс (панель + area-fill) + hero rim.
+ * Без StudioLights, IBL, directional, hero FillAreaLight остаётся (часть лайтбокса).
+ * false — вернуть весь свет.
+ */
+export const HERO_LIGHTBOX_ONLY = true
+
 /** Настройки геройской сцены: лайтбокс-стена + отражающий пол */
 export const HERO = {
   /** Тёмный фон, чтобы лайтбокс читался */
@@ -60,13 +67,93 @@ export const HERO = {
     height: 6.0,
     intensity: 2.4,
   },
-  /** Ободковый свет сверху-сзади — очерчивает силуэт */
+  /**
+   * Ободковый свет сверху-сзади-СПРАВА — очерчивает силуэт и слегка
+   * подсвечивает текстуру дверок с правого бока. intensity — крутилка.
+   */
   rimLight: {
     color: '#ffe9d6',
     position: [0.6, 3.4, -2.0],
-    intensity: 2.0,
+    intensity: 6.0,
     distance: 8,
     decay: 2,
+  },
+  /**
+   * Контурный свет на ДВЕРКИ слева-спереди. Только layer 0 (двери) —
+   * боковины корпуса (layer 1) не задевает. intensity — крутилка силы.
+   */
+  doorRimLeft: {
+    color: '#fff2e0',
+    position: [-3.4, 1.7, 1.9],
+    aimAt: [0, 1.4, 0.35],
+    width: 1.4,
+    height: 3.6,
+    intensity: 1.5,
+  },
+  /**
+   * Зеркальный контурный свет СПРАВА-спереди — та же цель, симметричная
+   * позиция. Вместе с doorRimLeft даёт равномерную засветку патины дверок.
+   */
+  doorRimRight: {
+    color: '#fff2e0',
+    position: [3.4, 1.7, 1.9],
+    aimAt: [0, 1.4, 0.35],
+    width: 1.4,
+    height: 3.6,
+    intensity: 1.5,
+  },
+  /**
+   * Мягкий beauty-свет только на внешние дверки: поднимает патину без влияния
+   * на корпус/интерьер/фон. Широкий и слабый, чтобы не вернуть белые блики.
+   */
+  doorFrontSoft: {
+    color: '#ffe8cf',
+    position: [0, 2.05, 3.15],
+    aimAt: [0, 1.38, 0.28],
+    width: 3.2,
+    height: 2.5,
+    intensity: 1.8,
+  },
+  /**
+   * Узкий fill на медальон (береста + кожа + ручки) — читает рельеф и прожилки.
+   * Только layer дверей, не трогает корпус.
+   */
+  doorMedallion: {
+    color: '#fff4e4',
+    position: [0, 1.52, 2.35],
+    aimAt: [0, 1.38, 0.3],
+    width: 1.05,
+    height: 1.08,
+    intensity: 1.75,
+  },
+  /**
+   * Directional-тени: пол (шкаф + ножки) и фронт дверей (ручки → beresta).
+   * RectArea/point в hero не дают shadow map — только directional.
+   */
+  shadow: {
+    floor: {
+      position: [1.4, 8.2, 2.6],
+      target: [0, 0.15, 0],
+      intensity: 0.34,
+      color: '#fff0e6',
+      mapSize: 2048,
+      radius: 2.2,
+      camera: { left: -5.5, right: 5.5, top: 5.5, bottom: -1.5, near: 0.4, far: 16 },
+      bias: -0.00018,
+      normalBias: 0.028,
+    },
+    door: {
+      /** Слева-спереди, низко — тень ручек падает на beresta вниз-вправо */
+      position: [-2.6, 2.85, 4.6],
+      target: [0, 1.36, 0.28],
+      intensity: 0.42,
+      color: '#fff4ea',
+      mapSize: 2048,
+      radius: 1.4,
+      camera: { left: -1.6, right: 1.6, top: 1.8, bottom: -1.2, near: 0.2, far: 8 },
+      bias: -0.00006,
+      normalBias: 0.01,
+    },
   },
   /** Отражающий пол (drei MeshReflectorMaterial) */
   floor: {
@@ -121,28 +208,36 @@ export const CORPUS_PBR = {
     specular: 0.07,
   },
   /**
-   * Панель двери (patina_PBR) — гладкий матовый премиум как в референсе.
-   * relief-карты снимаются, свет ложится ровно, без зерна.
+   * Панель двери (patina_PBR) — сохраняем GLB baseColor с патиной.
+   * В hero-lightbox режиме HDRI выключен, поэтому pure-metal карта тонет в тени:
+   * умеренный metalness даёт читать albedo под прямым RectAreaLight.
    */
   doorPanel: {
-    /** оставить текстуру GLB (true) или сделать сплошной цвет (false) */
-    useAlbedo: false,
-    /** молочный матовый как в референсе (эксперимент, без старой текстуры) */
-    color: '#d8d0c4',
-    metalness: 0.0,
-    roughness: 0.6,
-    env: 0.35,
-    specular: 0.1,
+    useAlbedo: true,
+    color: '#ffffff',
+    metalness: 0.38,
+    roughness: 0.68,
+    env: 0.42,
+    specular: 0.08,
   },
 }
 
-/** Береста — matte, без белого засвета от RectArea + HDRI */
+/** Береста — тёплая, с рельефом прожилок (normal + bump из GLB) */
 export const BERESTA_PBR = {
+  /**
+   * Множитель albedo. #ffffff = как в GLB (baseColorFactor не задан).
+   * Не тинтить — иначе уходит от оригинальной береста_темная.
+   */
   color: '#ffffff',
-  roughness: 0.88,
-  bumpScale: 0.024,
-  env: 0.14,
-  specular: 0.05,
+  roughness: 0.74,
+  /** GLB normal = albedo, не используем; рельеф через bump */
+  normalScale: 1,
+  bumpScale: 0.1,
+  env: 0.18,
+  specular: 0.08,
+  sheen: 0.1,
+  sheenRoughness: 0.68,
+  sheenColor: '#d8a860',
 }
 
 /**
@@ -215,12 +310,13 @@ export const STUDIO = {
   },
   camera: {
     fov: 34,
-    position: [0, 1.0, 5.25],
-    target: [0, 1.0, 0],
+    position: [0.09, 1.85, 6.55],
+    target: [0, 1.7, 0],
   },
-  /** Шкаф — центр плоскости пола (getCabinetPlacement → origin) */
+  /** Шкаф — центр корпуса на x=0 (лайтбокс / логотип); alignOffset — ручной дотюнинг */
   object: {
     position: [0, 0, 0],
+    alignOffset: [0, 0, 0],
   },
   orbit: {
     minAzimuth: -0.42,
@@ -229,7 +325,7 @@ export const STUDIO = {
     maxPolar: 1.58,
     minDistance: 2,
     maxDistance: 12,
-    enablePan: true,
+    enablePan: false,
   },
   lights: {
     key: {
@@ -412,16 +508,16 @@ export const HDRI_ENVIRONMENT_INTENSITY = STUDIO.env.intensity
 
 export const USE_STUDIO_CAMERA = true
 
-/** Плавный въезд камеры на старте (из точки from → в STUDIO.camera.position) */
+/** Плавный въезд камеры на старте — выключен, используем STUDIO.camera */
 export const CAMERA_INTRO = {
-  enabled: true,
+  enabled: false,
   from: [0, 2.0, 9.6],
   duration: 2.4,
   delay: 0.2,
   ease: 'power3.out',
 }
 
-export const DEBUG_LOG_CAMERA_POSITION = false
+export const DEBUG_LOG_CAMERA_POSITION = true
 
 /**
  * GPU-профили — Scene выбирает tier автоматически (desktop → medium).

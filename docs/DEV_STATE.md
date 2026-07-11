@@ -1,7 +1,7 @@
 # РУССО — состояние кода для разработки
 
 > Живой снимок того, **что работает, как и где**. Обновляй при изменении логики шкафа, сцены или навигации.
-> Дата актуализации: 2026-07-07.
+> Дата актуализации: 2026-07-08.
 > Пайплайн Blender→GLB описан отдельно в `docs/BLENDER_R3F_PIPELINE.md`.
 
 ---
@@ -63,7 +63,7 @@ src/
 ├── components/
 │   ├── 3d/
 │   │   ├── Scene.jsx           ⭐ оркестратор Canvas: камера, свет, постобработка, perf-тиры
-│   │   ├── Shkaf.jsx           ⭐ загрузка GLB, двери, ящики, клики, hover, навигация
+│   │   ├── Shkaf.jsx           ⭐ загрузка GLB, двери, ящики, клики, hover, навигация, внутренний свет
 │   │   ├── FitCamera.jsx       авто-подгон камеры под габариты шкафа
 │   │   ├── StudioEnvironment.jsx  IBL/Environment (drei)
 │   │   ├── StudioLights.jsx    RectArea key/fill/rim, разделение слоёв света
@@ -242,6 +242,29 @@ shkaf
 
 > ⚠️ **Производительность:** `MeshReflectorMaterial` делает доп. проход рендера — на слабых/AMD GPU повышает риск `WebGL context lost`. Если падает — снизить `HERO.floor.resolution` (512 → 256) и упростить `blur`.
 
+### Временный отладочный свет: `HERO_LIGHTBOX_ONLY`
+
+Флаг в `studioScene.js` рядом с `USE_HERO_LOOK`. При `true` (сейчас **включён**) в hero-режиме остаётся **только свет лайтбокса**:
+
+- горят: `LightboxPanel` (светящаяся стена) + `FillAreaLight` (рассеянный от неё) + `RimLight` (ободок);
+- гасятся: `StudioLights` (key/rim/fill/beresta/corpus), `StudioShadowLight`, IBL (`StudioEnvironment`).
+
+Реализация: константа `lightboxOnly = USE_HERO_LOOK && HERO_LIGHTBOX_ONLY` в `Scene.jsx` — условно снимает лишние источники. `false` — вернуть весь свет сцены.
+
+---
+
+## 8.3. Внутренний свет шкафа (`Shkaf.jsx`)
+
+Загорается **только при открытых дверях** (`doorsOpen ? intensity : 0`). Все источники светят на **оба слоя** (двери + корпус) через `enableBothLightLayers` — иначе медь внутри (layer 1) оставалась тёмной, а белая береста (layer 0) пересвечивалась.
+
+| Группа | Компонент | Тип | Куда | Intensity |
+|---|---|---|---|---|
+| Верхний акцент (3 шт) | `InteriorSpot` (`INTERIOR_LIGHTS`) | spotLight | с потолка вниз, широкий мягкий конус; центральный кастит тень | 0.55 |
+| Заполнение (2 шт) | `InteriorFill` (`INTERIOR_FILLS`) | pointLight (омни) | у **задней стенки** (`z = center.z − size.z*0.2`), выше/ниже центра — заливает интерьер, не жжёт переднюю полку | 3.4 |
+| Ящики (2 шт) | `InteriorSpot` (`DRAWER_SPOTS`) | spotLight | спереди-сверху (в плоскости открытых дверей) на **лицевые** панели: нижние 4 плашки + средние 2 ящика | 3.0 / 2.6 |
+
+> Логика: fill стоят сзади (омни у поверхности = горячий диск, поэтому убраны от передней полки), а лицевые грани ящиков смотрят наружу — их добивают фронтальные `DRAWER_SPOTS`. Тюнинг интенсивностей — прямо в `Shkaf.jsx` рядом с массивами.
+
 ---
 
 ## 8.2. Логотип: почему SVG превратился в PNG низкого разрешения
@@ -268,6 +291,7 @@ shkaf
 
 - `USE_RAW_GLB_MATERIALS = true` → материалы берутся из GLB + `applyRawMaterialPipeline` (управляется `USE_MATERIAL_FIXUPS`).
 - **Береста**: раздельные профили по имени материала (`BERESTA_MATERIAL_PROFILES`) — двери / нутро ящиков / задняя стенка не смешиваются.
+  - **Рельеф берёсты дверей** (`M_Beresta_Final.001`): глубина вынесена в `BERESTA_PBR.normalScale` (сейчас **1.9**) и `bumpScale` (**0.05**). Раньше нормаль была зажата в `(1,1)` + слабый bump → «плоско vs Blender». Крутить рельеф — в `BERESTA_PBR`; `normalScale` применяется в `tuneBerestaDoorMaterial` (`materialFixups.js`).
 - **Патина дверей**: текстуры грузятся в `patinaTextures.js` (при не-raw пути) либо берутся из GLB.
 - **Медь/латунь/корпус**: профили в `CORPUS_PBR`, каппинг specular и envMapIntensity (`materialFixups.js`).
 

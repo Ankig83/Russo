@@ -3,38 +3,33 @@ import struct
 import sys
 from pathlib import Path
 
-p = Path(sys.argv[1])
-data = p.read_bytes()
+path = Path(sys.argv[1])
+data = path.read_bytes()
 cl = struct.unpack("<I", data[12:16])[0]
 g = json.loads(data[20 : 20 + cl])
-nodes = g["nodes"]
-scenes = g.get("scenes", [])
-root_ids = scenes[0]["nodes"] if scenes else [0]
 
-def walk(i, depth=0):
-    n = nodes[i]
-    name = n.get("name", "")
-    mesh = n.get("mesh")
-    ch = n.get("children", [])
-    tag = " [MESH]" if mesh is not None else ""
-    print("  " * depth + f"{i}: {name!r}{tag}")
-    for c in ch:
-        walk(c, depth + 1)
+print("size_mb:", round(len(data) / 1024 / 1024, 2))
+print("meshes:", len(g.get("meshes", [])))
+print("nodes:", len(g.get("nodes", [])))
+print("materials:", len(g.get("materials", [])))
 
-print("Scene roots:")
-for rid in root_ids:
-    walk(rid)
-
-names = [n.get("name", "") for n in nodes]
-print("\ndoor_right in nodes:", "door_right" in names)
-print("door names:", [x for x in names if "door" in x.lower()])
-
-scenes = g.get("scenes", [])
-root_ids = scenes[0]["nodes"] if scenes else [0]
+nodes = g.get("nodes", [])
 meshes = g.get("meshes", [])
-print("\nROOT NODES:")
-for rid in root_ids:
-    n = nodes[rid]
-    mi = n.get("mesh")
-    prims = len(meshes[mi].get("primitives", [])) if mi is not None else 0
-    print(f"  {n.get('name')!r} mesh={mi} primitives={prims} children={len(n.get('children', []))}")
+accessors = g.get("accessors", [])
+
+print("\n--- nodes ---")
+for i, n in enumerate(nodes):
+    mesh_idx = n.get("mesh")
+    mesh_name = meshes[mesh_idx].get("name") if mesh_idx is not None else None
+    print(
+        f"  [{i}] {n.get('name')!r} mesh={mesh_idx} ({mesh_name!r}) "
+        f"children={n.get('children')} tr={n.get('translation')}"
+    )
+
+if len(sys.argv) > 2:
+    target = sys.argv[2]
+    for i, n in enumerate(nodes):
+        if n.get("name") == target and "mesh" in n:
+            pos_idx = meshes[n["mesh"]]["primitives"][0]["attributes"]["POSITION"]
+            acc = accessors[pos_idx]
+            print(f"\n{target} bbox min={acc.get('min')} max={acc.get('max')}")
