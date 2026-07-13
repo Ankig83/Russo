@@ -153,7 +153,7 @@ function StudioCameraSync({ position, target }) {
 }
 
 /** Clamp pan/zoom: target и высота камеры не уходят под пол / слишком вверх */
-function StudioOrbitLimits({ startTarget, limits }) {
+function StudioOrbitLimits({ startTarget, limits, startDistance }) {
   const controls = useThree((s) => s.controls)
   const camera = useThree((s) => s.camera)
 
@@ -161,9 +161,37 @@ function StudioOrbitLimits({ startTarget, limits }) {
     if (!controls?.target || !limits) return
 
     const [sx, sy, sz] = startTarget
-    const { targetOffset, minCameraY, maxCameraY } = limits
+    const { targetOffset, targetMinOffset, targetMaxOffset, minCameraY, maxCameraY } = limits
 
-    if (targetOffset) {
+    const dist = camera.position.distanceTo(controls.target)
+    const zoomT =
+      startDistance > 0
+        ? THREE.MathUtils.clamp(1 - dist / startDistance, 0, 1)
+        : 0
+    const zoomPanBoost = 1 + zoomT * 0.9
+
+    const minOff = targetMinOffset || targetOffset
+    const maxOff = targetMaxOffset || targetOffset
+
+    if (minOff || maxOff) {
+      if (minOff) {
+        controls.target.x = THREE.MathUtils.clamp(
+          controls.target.x,
+          sx - minOff.x * zoomPanBoost,
+          sx + (maxOff?.x ?? minOff.x) * zoomPanBoost,
+        )
+        controls.target.y = THREE.MathUtils.clamp(
+          controls.target.y,
+          sy - minOff.y * zoomPanBoost,
+          sy + (maxOff?.y ?? minOff.y) * zoomPanBoost,
+        )
+        controls.target.z = THREE.MathUtils.clamp(
+          controls.target.z,
+          sz - minOff.z * zoomPanBoost,
+          sz + (maxOff?.z ?? minOff.z) * zoomPanBoost,
+        )
+      }
+    } else if (targetOffset) {
       controls.target.x = THREE.MathUtils.clamp(
         controls.target.x,
         sx - targetOffset.x,
@@ -355,7 +383,11 @@ export default function Scene() {
           }
         />
         {USE_STUDIO_CAMERA && !refVoid && orbit.panLimits && (
-          <StudioOrbitLimits startTarget={camera.target} limits={orbit.panLimits} />
+          <StudioOrbitLimits
+            startTarget={camera.target}
+            limits={orbit.panLimits}
+            startDistance={maxOrbitDistance}
+          />
         )}
         <StudioCameraSync position={camera.position} target={camera.target} />
         {DEBUG_LOG_CAMERA_POSITION && <LogStudioCameraStart />}
