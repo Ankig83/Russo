@@ -65,5 +65,6 @@ jobs:
 
       - name: Preview URL hint
         run: |
-          echo "Превью залито в /var/www/russo-preview на VPS."
-          echo "Откройте preview-домен или поддомен, указывающий на эту папку."
+          echo "Превью залито в /var/www/russo-preview"
+          echo "URL (после настройки nginx): http://93.189.229.230:8080/"
+          echo "Конфиг: deploy/nginx-russo-preview.conf"
