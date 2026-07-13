@@ -174,7 +174,7 @@ export default function CabinetLegs() {
     })
   }, [])
 
-  const segments = useMemo(buildSegments, [])
+  const segments = useMemo(() => buildSegments(), [])
 
   return (
     <group raycast={() => null}>

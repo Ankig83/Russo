@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef } from 'react'
-import * as THREE from 'three'
 import { LIGHT_LAYERS, STUDIO } from '../../constants/studioScene'
 import { useStudioPerformance } from '../../hooks/useStudioPerformance'
 

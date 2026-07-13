@@ -94,7 +94,7 @@ export default function LoadingOverlay() {
   const logoRef  = useRef(null)
   const setLoadingDone = useAppStore((s) => s.setLoadingDone)
   const [hidden, setHidden] = useState(false)
-  const startMs  = useRef(Date.now())
+  const [startMs] = useState(() => Date.now())
   const exitDone = useRef(false)
 
   useEffect(() => {
@@ -124,7 +124,7 @@ export default function LoadingOverlay() {
   useEffect(() => {
     if (active || exitDone.current) return
 
-    const elapsed = Date.now() - startMs.current
+    const elapsed = Date.now() - startMs
     const delay   = Math.max(0, minShowMs - elapsed)
 
     if (delay > 0) {
@@ -151,7 +151,7 @@ export default function LoadingOverlay() {
       const targetY = -(rect.top - insetTop)
 
       gsap.killTweensOf(logo)
-      russoOverlayPhase('exit-start', { elapsedMs: Date.now() - startMs.current })
+      russoOverlayPhase('exit-start', { elapsedMs: Date.now() - startMs })
 
       const tl = gsap.timeline({ onComplete: () => {
         setLoadingDone()
@@ -176,7 +176,7 @@ export default function LoadingOverlay() {
     }, delay)
 
     return () => clearTimeout(timer)
-  }, [active, setLoadingDone, isMobile, cornerInset, minShowMs])
+  }, [active, setLoadingDone, isMobile, cornerInset, minShowMs, startMs])
 
   if (hidden) return null
 

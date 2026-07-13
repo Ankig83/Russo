@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useGLTF } from '@react-three/drei'
-import { useThree, useFrame } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import gsap from 'gsap'
 import { useIsMobile } from '../../hooks/useMediaQuery'
@@ -34,7 +34,7 @@ import {
 import { useShkafStore } from '../../store/shkafStore'
 import FitCamera from './FitCamera'
 import { USE_STUDIO_CAMERA, USE_HDRI_ONLY, LIGHT_LAYERS, getEffectiveSplitCorpusLight, STUDIO } from '../../constants/studioScene'
-import { getCabinetBounds, getCabinetPlacement, findByName } from '../../utils/cabinetBounds'
+import { getCabinetPlacement, findByName } from '../../utils/cabinetBounds'
 import { attachGlbLegs } from '../../utils/attachGlbLegs'
 import {
   findDrawerFromIntersections,
@@ -164,11 +164,6 @@ const _pullDir = new THREE.Vector3()
 const _parentMatrix = new THREE.Matrix4()
 
 const INNER_DOOR_BACKFACE_SUFFIX = '__inner_copper_backface'
-const MEDALLION_RING_NODES = {
-  left: 'BézierCircle.001',
-  right: 'BézierCircle',
-}
-
 function createInnerDoorCopperMaterial(sourceMaterial) {
   const source = Array.isArray(sourceMaterial) ? sourceMaterial[0] : sourceMaterial
   const material = source?.clone?.() ?? new THREE.MeshStandardMaterial({ name: 'Material.002' })
@@ -702,7 +697,7 @@ function finalizeShkafSceneGraph(model) {
 function Shkaf({ sceneScale = 1 }) {
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
   const { scene: legsScene } = useGLTF(SHKAF_LEGS_MODEL_PATH)
-  const { gl, camera, controls } = useThree()
+  const { gl, camera } = useThree()
   const isMobile = useIsMobile()
   const dragThresholdPx = isMobile ? DRAG_THRESHOLD_MOBILE_PX : DRAG_THRESHOLD_DESKTOP_PX
   const rootRef = useRef()
@@ -737,7 +732,6 @@ function Shkaf({ sceneScale = 1 }) {
     () => getCabinetPlacement(model, SHKAF_ROOT_NAME),
     [model],
   )
-  const alignedFloorY = 0
   const center = alignedCenter
 
   const scenePrepared = useRef(null)
@@ -889,7 +883,7 @@ function Shkaf({ sceneScale = 1 }) {
         )
       }
     },
-    [animating, setDoorsOpen, setAnimating],
+    [animating, setDoorsOpen, setAnimating, model],
   )
 
   const toggleDoors = useCallback(() => {
@@ -1175,11 +1169,6 @@ function Shkaf({ sceneScale = 1 }) {
       el.removeEventListener('pointercancel', onPointerCancel)
     }
   }, [gl, camera, model, dragThresholdPx, processTapFromHits, tapRaycaster, tapNdc])
-
-  // OrbitControls всегда enabled — не даём залипнуть
-  useFrame(() => {
-    if (controls && controls.enabled === false) controls.enabled = true
-  })
 
   // Пока двери открыты — двери не ловят raycast (ящики доступны стабильно)
   useEffect(() => {

@@ -1,21 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 
 /** Хук для медиа-запросов (мобильная адаптация) */
 export function useMediaQuery(query) {
-  const [matches, setMatches] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia(query).matches : false,
+  const subscribe = useCallback(
+    (onStoreChange) => {
+      const media = window.matchMedia(query)
+      media.addEventListener('change', onStoreChange)
+      return () => media.removeEventListener('change', onStoreChange)
+    },
+    [query],
   )
 
-  useEffect(() => {
-    const media = window.matchMedia(query)
-    const handler = (event) => setMatches(event.matches)
+  const getSnapshot = useCallback(
+    () => window.matchMedia(query).matches,
+    [query],
+  )
 
-    setMatches(media.matches)
-    media.addEventListener('change', handler)
-    return () => media.removeEventListener('change', handler)
-  }, [query])
-
-  return matches
+  return useSyncExternalStore(subscribe, getSnapshot, () => false)
 }
 
 /** Экран считается мобильным при ширине < 768px */

@@ -23,15 +23,12 @@ import {
   CORPUS_PBR,
   BERESTA_PBR,
   USE_MATERIAL_FIXUPS,
-  USE_SPLIT_CORPUS_LIGHT,
   getEffectiveSplitCorpusLight,
 } from '../constants/studioScene'
 
 /** Мин. roughness без roughnessMap — патина/медь */
 const PATINA_MIN_ROUGHNESS = 0.25
 const PLAIN_COPPER_MIN_ROUGHNESS = 0.25
-const BRASS_ROUGHNESS = 0.26
-
 const berestaNames = new Set(BERESTA_MATERIALS)
 const corpusReflectiveNames = new Set(CORPUS_REFLECTIVE_MATERIALS)
 const patinaNames = new Set(PATINA_MATERIALS)
