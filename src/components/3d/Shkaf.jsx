@@ -17,6 +17,7 @@ import {
   INACTIVE_DRAWER_NODES,
   INACTIVE_MESH_NAMES,
   DRAWER_LID_TO_BODY,
+  DRAWER_FRONT_NODES,
   DRAWER_TABL_NODES,
   GLB_LEG_NODES,
   USE_PROCEDURAL_LEGS,
@@ -632,6 +633,13 @@ function finalizeShkafSceneGraph(model) {
     })
   })
 
+  // Навигация — по tabl_*; фронты drawer_tl/tr/bl/br не принимают raycast
+  DRAWER_FRONT_NODES.forEach((name) => {
+    const front = model.getObjectByName(name)
+    if (!front) return
+    front.raycast = () => null
+  })
+
   Object.entries(DRAWER_TABL_NODES).forEach(([sectionId, tablName]) => {
     const drawer = model.getObjectByName(SHKAF_NODE_MAP[sectionId])
     const tabl = model.getObjectByName(tablName)
@@ -642,6 +650,7 @@ function finalizeShkafSceneGraph(model) {
       if (child.isMesh) {
         child.castShadow = true
         child.receiveShadow = true
+        child.renderOrder = 3
       }
     })
   })

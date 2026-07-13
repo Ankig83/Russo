@@ -31,15 +31,11 @@ function isUnderInactiveDrawerNode(object) {
   return false
 }
 
-/** section.id по объекту raycast — идём вверх по дереву до ящика/таблички/плашки */
+/** section.id по объекту raycast — вверх по дереву; материал таблички важнее номера tabl_N */
 function findSectionIdFromHit(object) {
   let current = object
   while (current) {
     if (INACTIVE_MESH_NAMES.has(current.name)) return null
-
-    if (DRAWER_NODE_NAMES.has(current.name)) return DRAWER_NODE_TO_SECTION[current.name]
-
-    if (TABL_TO_SECTION[current.name]) return TABL_TO_SECTION[current.name]
 
     if (current.isMesh && current.material) {
       const materials = Array.isArray(current.material) ? current.material : [current.material]
@@ -48,6 +44,10 @@ function findSectionIdFromHit(object) {
         if (sectionId) return sectionId
       }
     }
+
+    if (TABL_TO_SECTION[current.name]) return TABL_TO_SECTION[current.name]
+
+    if (DRAWER_NODE_NAMES.has(current.name)) return DRAWER_NODE_TO_SECTION[current.name]
 
     current = current.parent
   }
