@@ -1,4 +1,4 @@
-import { Document, NodeIO } from '@gltf-transform/core'
+import { NodeIO } from '@gltf-transform/core'
 import { KHRTextureTransform } from '@gltf-transform/extensions'
 import fs from 'fs'
 import path from 'path'
@@ -12,10 +12,7 @@ const io = new NodeIO().registerExtensions([KHRTextureTransform])
 const doc = await io.read(input)
 const rootNode = doc.getRoot()
 
-let meshCount = 0
-for (const mesh of rootNode.listMeshes()) {
-  meshCount++
-}
+const meshCount = rootNode.listMeshes().length
 
 for (const material of rootNode.listMaterials()) {
   material.setBaseColorFactor([0.55, 0.52, 0.48, 1])

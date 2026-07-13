@@ -10,7 +10,7 @@
  *
  * Результат: public/assets/portfolio/<slug>/01.webp, 02.webp, ... + cover.webp (первый кадр).
  */
-import { readdir, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readdir, mkdir, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

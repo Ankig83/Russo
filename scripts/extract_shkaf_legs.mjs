@@ -1,4 +1,4 @@
-import { Document, NodeIO } from '@gltf-transform/core'
+import { NodeIO } from '@gltf-transform/core'
 import { KHRTextureTransform } from '@gltf-transform/extensions'
 import { prune } from '@gltf-transform/functions'
 import path from 'path'
