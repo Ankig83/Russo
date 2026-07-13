@@ -4,10 +4,14 @@
  * HUD: всегда на главной (можно скрыть: localStorage.setItem('russo:debug','0'))
  */
 
-export const RUSSO_BUILD = '2026-07-13-cam3'
+const PREFIX = 'РУССО'
+export const RUSSO_BUILD = '2026-07-13-p0-fixes'
 const listeners = new Set()
 
 function isHudEnabled() {
+  if (!import.meta.env.DEV && import.meta.env.VITE_SUPPORT_DIAGNOSTICS !== 'true') {
+    return false
+  }
   try {
     if (typeof window === 'undefined') return true
     if (window.localStorage?.getItem('russo:debug') === '0') return false
