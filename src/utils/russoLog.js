@@ -4,7 +4,7 @@
  * HUD: всегда на главной (можно скрыть: localStorage.setItem('russo:debug','0'))
  */
 
-const PREFIX = 'РУССО'
+export const RUSSO_BUILD = '2026-07-13-cam3'
 const listeners = new Set()
 
 function isHudEnabled() {
@@ -116,7 +116,7 @@ function recomputeReady() {
 }
 
 export function russoBoot() {
-  russoLog('info', 'boot', 'старт приложения')
+  russoLog('info', 'boot', `старт приложения · build ${RUSSO_BUILD}`)
   russoPatch({ lastEvent: 'boot' })
 }
 

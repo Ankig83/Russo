@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useGLTF } from '@react-three/drei'
-import { useThree } from '@react-three/fiber'
+import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import gsap from 'gsap'
 import { useIsMobile } from '../../hooks/useMediaQuery'
@@ -702,19 +702,13 @@ function finalizeShkafSceneGraph(model) {
 function Shkaf({ sceneScale = 1 }) {
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
   const { scene: legsScene } = useGLTF(SHKAF_LEGS_MODEL_PATH)
-  const controls = useThree((s) => s.controls)
+  const { gl, camera, controls } = useThree()
   const isMobile = useIsMobile()
   const dragThresholdPx = isMobile ? DRAG_THRESHOLD_MOBILE_PX : DRAG_THRESHOLD_DESKTOP_PX
-
-  // На случай если предыдущий жест оставил controls.enabled = false
-  useEffect(() => {
-    if (controls) controls.enabled = true
-  }, [controls])
   const rootRef = useRef()
   const leftDoorRef = useRef()
   const rightDoorRef = useRef()
   const closedRotations = useRef({ left: 0, right: 0 })
-  const pointerDownPos = useRef({ x: 0, y: 0 })
   const hoveredDrawerId = useRef(null)
   const hoverTweens = useRef([])
   const meshMaterialBackup = useRef(new Map())
@@ -1044,26 +1038,16 @@ function Shkaf({ sceneScale = 1 }) {
     [model, navigate, setAnimating, setActiveDrawerId, clearDrawerHover],
   )
 
-  const pointerDownAt = useRef(0)
-  const tapHandled = useRef(false)
-
-  const processTap = useCallback(
-    (event) => {
-      const dx = event.clientX - pointerDownPos.current.x
-      const dy = event.clientY - pointerDownPos.current.y
-      const dragPx = Math.round(Math.sqrt(dx * dx + dy * dy) * 10) / 10
-      const intersections = event.intersections?.length
-        ? event.intersections
-        : event.object
-          ? [{ object: event.object, distance: 0 }]
-          : []
+  const processTapFromHits = useCallback(
+    (intersections, dragPx) => {
+      const firstObject = intersections[0]?.object ?? null
 
       const { activeDrawerId: activeId, animating: isAnimating, doorsOpen: open } =
         useShkafStore.getState()
 
       if (isAnimating || activeId) {
         russoClick('blocked', {
-          hit: event.object,
+          hit: firstObject,
           dragPx,
           reason: isAnimating
             ? 'идёт анимация дверей/ящика'
@@ -1097,70 +1081,105 @@ function Shkaf({ sceneScale = 1 }) {
         }
 
         russoClick('miss-close', {
-          hit: event.object,
+          hit: firstObject,
           dragPx,
           reason: 'по лучу нет drawer/tabl — закрываем двери',
-          hitInfo: describeHitObject(event.object),
+          hitInfo: describeHitObject(firstObject),
           intersectionNames: intersections.slice(0, 6).map((h) => h.object?.name),
         })
         toggleDoors()
         return
       }
 
+      if (!firstObject) {
+        russoLog('info', 'click', 'тап мимо модели — игнор')
+        return
+      }
+
       russoClick('doors', {
-        hit: event.object,
+        hit: firstObject,
         dragPx,
         reason: 'двери закрыты → открываем',
-        hitInfo: describeHitObject(event.object),
+        hitInfo: describeHitObject(firstObject),
       })
       toggleDoors()
     },
     [model, handleDrawerClick, toggleDoors],
   )
 
-  // OrbitControls всегда включены. Тап = короткий жест без большого сдвига.
-  const handlePointerDown = useCallback((event) => {
-    if (event.pointerType !== 'touch' && event.button !== 0) return
-    pointerDownPos.current = { x: event.clientX, y: event.clientY }
-    pointerDownAt.current = performance.now()
-    tapHandled.current = false
-  }, [])
+  const tapRaycaster = useMemo(() => new THREE.Raycaster(), [])
+  const tapNdc = useMemo(() => new THREE.Vector2(), [])
 
-  const handlePointerUp = useCallback(
-    (event) => {
-      if (event.pointerType !== 'touch' && event.button !== 0) return
-      if (tapHandled.current) return
+  // Тап через DOM — OrbitControls не конфликтует с R3F pointer handlers на mesh
+  useEffect(() => {
+    const el = gl.domElement
+    let down = null
 
-      const elapsed = performance.now() - pointerDownAt.current
-      const dx = event.clientX - pointerDownPos.current.x
-      const dy = event.clientY - pointerDownPos.current.y
-      const dragPx = Math.sqrt(dx * dx + dy * dy)
+    const onPointerDown = (e) => {
+      if (e.pointerType !== 'touch' && e.button !== 0) return
+      if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
+      down = {
+        x: e.clientX,
+        y: e.clientY,
+        t: performance.now(),
+        pointerId: e.pointerId,
+      }
+    }
 
-      // Вращение / pan / зум — не трогаем, только отсекаем от тапа
+    const onPointerUp = (e) => {
+      if (!down || down.pointerId !== e.pointerId) return
+      const start = down
+      down = null
+      if (e.pointerType !== 'touch' && e.button !== 0) return
+
+      const dragPx = Math.hypot(e.clientX - start.x, e.clientY - start.y)
+      const elapsed = performance.now() - start.t
+
       if (dragPx > dragThresholdPx) {
         russoClick('ignore-drag', {
-          hit: event.object,
           dragPx: Math.round(dragPx),
           threshold: dragThresholdPx,
-          reason: `сдвиг ${Math.round(dragPx)}px — это камера, не тап`,
+          reason: `сдвиг ${Math.round(dragPx)}px — камера, не тап`,
         })
         return
       }
       if (elapsed > TAP_MAX_MS) {
         russoClick('ignore-drag', {
-          hit: event.object,
           dragPx: Math.round(dragPx),
           reason: `удержание ${Math.round(elapsed)}ms — не тап`,
         })
         return
       }
 
-      tapHandled.current = true
-      event.stopPropagation()
-      processTap(event)
-    },
-    [dragThresholdPx, processTap],
-  )
+      const rect = el.getBoundingClientRect()
+      if (!rect.width || !rect.height) return
+      tapNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+      tapNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+      tapRaycaster.setFromCamera(tapNdc, camera)
+      const hits = tapRaycaster.intersectObject(model, true)
+      processTapFromHits(hits, Math.round(dragPx * 10) / 10)
+    }
+
+    const onPointerCancel = (e) => {
+      if (down?.pointerId === e.pointerId) down = null
+    }
+
+    el.addEventListener('pointerdown', onPointerDown)
+    el.addEventListener('pointerup', onPointerUp)
+    el.addEventListener('pointercancel', onPointerCancel)
+    russoLog('info', 'click', 'DOM-тап поверх OrbitControls (без R3F stopPropagation)')
+
+    return () => {
+      el.removeEventListener('pointerdown', onPointerDown)
+      el.removeEventListener('pointerup', onPointerUp)
+      el.removeEventListener('pointercancel', onPointerCancel)
+    }
+  }, [gl, camera, model, dragThresholdPx, processTapFromHits, tapRaycaster, tapNdc])
+
+  // OrbitControls всегда enabled — не даём залипнуть
+  useFrame(() => {
+    if (controls && controls.enabled === false) controls.enabled = true
+  })
 
   // Пока двери открыты — двери не ловят raycast (ящики доступны стабильно)
   useEffect(() => {
@@ -1169,20 +1188,18 @@ function Shkaf({ sceneScale = 1 }) {
     russoLog('info', 'doors', doorsOpen ? 'raycast дверей OFF (ящики приоритет)' : 'raycast дверей ON')
   }, [doorsOpen, animating, model])
 
-  const handlePointerOver = useCallback(
+  // Hover только desktop — без stopPropagation, чтобы не трогать orbit
+  const handlePointerMove = useCallback(
     (event) => {
-      event.stopPropagation()
+      if (isMobile) return
       const { animating: busy, activeDrawerId: activeId } = useShkafStore.getState()
       if (!doorsOpen || busy || activeId) return
 
       const drawerHit = findDrawerFromIntersections(event.intersections, model)
-      if (drawerHit) {
-        applyDrawerHover(drawerHit.section.id)
-      } else {
-        clearDrawerHover()
-      }
+      if (drawerHit) applyDrawerHover(drawerHit.section.id)
+      else clearDrawerHover()
     },
-    [doorsOpen, applyDrawerHover, clearDrawerHover, model],
+    [isMobile, doorsOpen, applyDrawerHover, clearDrawerHover, model],
   )
 
   // Подсветка с потолка шкафа — мягкий верхний акцент
@@ -1232,12 +1249,7 @@ function Shkaf({ sceneScale = 1 }) {
         placement[2] + alignOffset[2],
       ]}
     >
-      <primitive
-        object={model}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        onPointerOver={handlePointerOver}
-      />
+      <primitive object={model} onPointerMove={handlePointerMove} />
 
       {USE_PROCEDURAL_LEGS && <CabinetLegs />}
 

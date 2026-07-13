@@ -264,7 +264,9 @@ export default function Scene() {
   const refVoid = USE_REFERENCE_VOID_LOOK
   const camera = refVoid ? REFERENCE_VOID.camera : getStudioCameraConfig(isMobile)
   const orbit = refVoid ? REFERENCE_VOID.orbit : getStudioOrbitConfig(isMobile)
-  const maxOrbitDistance = refVoid ? orbit.maxDistance : getStudioCameraStartDistance(camera)
+  const startDistance = getStudioCameraStartDistance(camera)
+  /** Нельзя резать maxDistance стартом — иначе зум/отдаление «мёртвые» */
+  const maxOrbitDistance = Math.max(orbit.maxDistance ?? startDistance, startDistance)
   const object = STUDIO.object
   const shadow = STUDIO.shadow
   const postprocessing = refVoid
@@ -390,7 +392,7 @@ export default function Scene() {
           <StudioOrbitLimits
             startTarget={camera.target}
             limits={orbit.panLimits}
-            startDistance={maxOrbitDistance}
+            startDistance={startDistance}
           />
         )}
         <StudioCameraSync position={camera.position} target={camera.target} />

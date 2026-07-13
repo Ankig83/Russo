@@ -498,11 +498,12 @@ export const STUDIO_MOBILE = {
     target: [0, 0.81, 0],
   },
   orbit: {
-    minAzimuth: -0.46,
-    maxAzimuth: 0.28,
-    minPolar: 1.16,
-    maxPolar: 1.62,
+    minAzimuth: -0.55,
+    maxAzimuth: 0.55,
+    minPolar: 1.1,
+    maxPolar: 1.65,
     minDistance: 1.5,
+    maxDistance: 10,
     /** Два пальца: pinch = zoom, сдвиг = pan (как ПКМ на десктопе) */
     enablePan: true,
     panLimits: {

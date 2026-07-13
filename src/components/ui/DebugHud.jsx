@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { subscribeRussoDebug } from '../../utils/russoLog'
+import { subscribeRussoDebug, RUSSO_BUILD } from '../../utils/russoLog'
 
 /** Компактный HUD диагностики на главной (телефон без консоли) */
 export default function DebugHud() {
@@ -63,7 +63,9 @@ export default function DebugHud() {
           )}
         </div>
       )}
-      <div className="mt-1 text-white/35">консоль: фильтр «РУССО» · скрыть HUD: ?debug=0</div>
+      <div className="mt-1 text-white/35">
+        build {RUSSO_BUILD} · консоль: «РУССО» · ?debug=0
+      </div>
     </div>
   )
 }
