@@ -486,18 +486,21 @@ export const REFERENCE_VOID = {
 /** Дистанция hero-камеры на старте — max zoom out (desktop) */
 export const STUDIO_CAMERA_START_DISTANCE = getStudioCameraStartDistance(STUDIO.camera)
 
-/** Hero-сцена на мобильных (<768px): чуть шире FOV, дальше камера, уже orbit */
+/**
+ * Hero-кадр на мобильных (<768px) — отдельно от десктопа.
+ * Старт: низкий угол, 3/4 (видна правая сторона), шкаф целиком в портретном кадре.
+ */
 export const STUDIO_MOBILE = {
   camera: {
-    fov: 40,
-    position: [0.04, 1.72, 7.45],
-    target: [0, 1.58, 0],
+    fov: 36,
+    position: [-1.2, 0.94, 5.5],
+    target: [0, 1.16, 0],
   },
   orbit: {
-    minAzimuth: -0.32,
-    maxAzimuth: 0.32,
-    minPolar: 1.22,
-    maxPolar: 1.58,
+    minAzimuth: -0.46,
+    maxAzimuth: 0.28,
+    minPolar: 1.16,
+    maxPolar: 1.62,
     minDistance: 1.5,
     /** Два пальца: pinch = zoom, сдвиг = pan (как ПКМ на десктопе) */
     enablePan: true,
