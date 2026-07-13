@@ -494,7 +494,7 @@ export const STUDIO_CAMERA_START_DISTANCE = getStudioCameraStartDistance(STUDIO.
 export const STUDIO_MOBILE = {
   camera: {
     fov: 32,
-    position: [-0.7, 1.04, 3.22],
+    position: [-0.7, 0.45, 3.22],
     target: [0, 1.28, 0],
   },
   orbit: {
@@ -507,7 +507,7 @@ export const STUDIO_MOBILE = {
     enablePan: true,
     panLimits: {
       targetOffset: { x: 0.3, y: 0.42, z: 0.25 },
-      minCameraY: 0.55,
+      minCameraY: 0.38,
       maxCameraY: 2.75,
     },
     rotateSpeed: 0.72,
