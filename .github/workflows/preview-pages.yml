@@ -1,0 +1,42 @@
+name: Preview on GitHub Pages
+
+on:
+  push:
+    branches:
+      - 'cursor/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-preview
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_BASE_PATH: /Russo/preview/
+      - run: cp dist/index.html dist/404.html
+
+      - name: Publish preview to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: preview
+          keep_files: true
+
+      - name: Preview URL
+        run: echo "https://ankig83.github.io/Russo/preview/"

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Routes, Route } from 'react-router-dom'
 import CornerLogo from './components/ui/CornerLogo'
 import Home from './pages/Home'
 import About from './pages/About'
@@ -10,8 +10,10 @@ import NotFound from './pages/NotFound'
 
 /** Корневой роутер приложения */
 export default function App() {
+  const Router = import.meta.env.BASE_URL !== '/' ? HashRouter : BrowserRouter
+
   return (
-    <BrowserRouter>
+    <Router>
       <CornerLogo />
       <Routes>
         <Route path="/" element={<Home />} />
@@ -24,6 +26,6 @@ export default function App() {
         <Route path="/author-collections/:slug" element={<ProjectCarouselPage category="author" />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   )
 }
