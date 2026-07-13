@@ -55,9 +55,6 @@ import {
   isBerestaMaterial,
 } from '../../utils/materialFixups'
 
-useGLTF.preload(SHKAF_MODEL_PATH)
-useGLTF.preload(SHKAF_LEGS_MODEL_PATH)
-
 const HOVER_NUDGE = 0.032
 const HOVER_WIGGLE_DURATION = 0.45
 const HOVER_EMISSIVE = '#c9a040'

@@ -5,8 +5,8 @@ import { useAppStore } from '../../store/appStore'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { russoAssetsProgress, russoOverlayPhase } from '../../utils/russoLog'
 
-const MIN_SHOW_MS = 7500
-const MIN_SHOW_MS_MOBILE = 6000
+const MIN_SHOW_MS = 800
+const MIN_SHOW_MS_MOBILE = 600
 const assetBase = import.meta.env.BASE_URL
 
 function safeInset(side) {
@@ -93,6 +93,7 @@ export default function LoadingOverlay() {
   const wrapRef  = useRef(null)
   const logoRef  = useRef(null)
   const setLoadingDone = useAppStore((s) => s.setLoadingDone)
+  const loadingDone = useAppStore((s) => s.loadingDone)
   const [hidden, setHidden] = useState(false)
   const [startMs] = useState(() => Date.now())
   const exitDone = useRef(false)
@@ -122,7 +123,7 @@ export default function LoadingOverlay() {
   }, [isMobile])
 
   useEffect(() => {
-    if (active || exitDone.current) return
+    if (loadingDone || active || exitDone.current) return
 
     const elapsed = Date.now() - startMs
     const delay   = Math.max(0, minShowMs - elapsed)
@@ -176,9 +177,9 @@ export default function LoadingOverlay() {
     }, delay)
 
     return () => clearTimeout(timer)
-  }, [active, setLoadingDone, isMobile, cornerInset, minShowMs, startMs])
+  }, [active, loadingDone, setLoadingDone, isMobile, cornerInset, minShowMs, startMs])
 
-  if (hidden) return null
+  if (hidden || loadingDone) return null
 
   return (
     <div

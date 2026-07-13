@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { useAppStore } from '../../store/appStore'
 import gsap from 'gsap'
 import { useIsMobile } from '../../hooks/useMediaQuery'
@@ -21,9 +22,9 @@ export default function CornerLogo() {
   if (!loadingDone) return null
 
   return (
-    <a
+    <Link
       ref={ref}
-      href="/"
+      to="/"
       className="pointer-events-auto fixed z-40 opacity-0"
       style={{
         display: 'block',
@@ -61,6 +62,6 @@ export default function CornerLogo() {
             v1.1C274.6,282.7,278.2,281.3,282.1,281.3z"
         />
       </svg>
-    </a>
+    </Link>
   )
 }

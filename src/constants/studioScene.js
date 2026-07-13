@@ -580,8 +580,9 @@ export const DEBUG_LOG_CAMERA_POSITION = false
  * forceTier: 'low'|'medium'|'high' или ?perf=low в URL
  */
 export const STUDIO_PERFORMANCE = {
-  // 'medium' стабилен на слабых/AMD GPU: без N8AO/normalPass/шума — чётче и без потери WebGL-контекста
-  forceTier: 'medium',
+  // null = mobile/слабые устройства получают low автоматически.
+  // Для диагностики профиль можно переопределить через ?perf=low|medium|high.
+  forceTier: null,
   defaultTier: 'medium',
   tiers: {
     low: {
