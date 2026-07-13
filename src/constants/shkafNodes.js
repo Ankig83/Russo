@@ -126,10 +126,10 @@ export const BERESTA_MESH_MAP = {
   Beck_W: 'bes=resta_W_M',
 }
 /**
- * Простая тёмная медь (без текстуры): корпус shkaf (Material.002) и ножки
- * leg_beck_o / leg_front_o (Material.004). Единый плоский медный тон, roughness 0.4.
+ * Простая тёмная медь (без текстуры): корпус shkaf (Material.002).
+ * Ножки (M_BlackCopper_v3) — материал копируется с корпуса в attachGlbLegs.
  */
-export const PLAIN_DARK_COPPER_MATERIALS = ['Material.002', 'Material.004', 'M_BlackCopper_v3']
+export const PLAIN_DARK_COPPER_MATERIALS = ['Material.002', 'Material.004']
 
 /**
  * Панель двери (сама дверка, БЕЗ бересты и круга) — материал patina_PBR
