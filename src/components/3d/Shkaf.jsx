@@ -17,7 +17,6 @@ import {
   INACTIVE_DRAWER_NODES,
   INACTIVE_MESH_NAMES,
   DRAWER_LID_TO_BODY,
-  DRAWER_FRONT_NODES,
   DRAWER_TABL_NODES,
   GLB_LEG_NODES,
   USE_PROCEDURAL_LEGS,
@@ -508,7 +507,8 @@ function getPullDirection(node) {
 
 /** Порог смещения (px) — выше него клик считается вращением камеры */
 const DRAG_THRESHOLD_DESKTOP_PX = 5
-const DRAG_THRESHOLD_MOBILE_PX = 14
+/** Выше — меньше ложных отмен тапа из‑за лёгкого сдвига камеры OrbitControls */
+const DRAG_THRESHOLD_MOBILE_PX = 28
 
 function attachCabinetSceneRoots(model) {
   const shkafRoot = model.getObjectByName(SHKAF_ROOT_NAME)
@@ -623,7 +623,7 @@ function finalizeShkafSceneGraph(model) {
     if (mesh?.isMesh) mesh.raycast = () => null
   })
 
-  // Группы анимации — mesh перекрывает фронты drawer_tl/tr/bl/br и таблички
+  // drawer_1/drawer_2 — нутро, не трогаем анимацию; raycast off чтобы не перекрывать фронты/tabl
   ;['drawer_1', 'drawer_2'].forEach((name) => {
     const node = model.getObjectByName(name)
     if (!node) return
@@ -633,13 +633,7 @@ function finalizeShkafSceneGraph(model) {
     })
   })
 
-  // Навигация — по tabl_*; фронты drawer_tl/tr/bl/br не принимают raycast
-  DRAWER_FRONT_NODES.forEach((name) => {
-    const front = model.getObjectByName(name)
-    if (!front) return
-    front.raycast = () => null
-  })
-
+  // tabl_* → к своему фронту; кликабельны и табличка, и drawer_tl/tr/bl/br
   Object.entries(DRAWER_TABL_NODES).forEach(([sectionId, tablName]) => {
     const drawer = model.getObjectByName(SHKAF_NODE_MAP[sectionId])
     const tabl = model.getObjectByName(tablName)
@@ -1040,17 +1034,21 @@ function Shkaf({ sceneScale = 1 }) {
       const { activeDrawerId } = useShkafStore.getState()
 
       if (doorsOpen && !animating && !activeDrawerId) {
-        const drawerNode = findDrawerNodeFromHit(event.object)
         const drawerSection = findDrawerSectionFromHit(event.object)
-        if (drawerSection && drawerNode) {
-          handleDrawerClick(drawerSection, drawerNode)
-          return
+        if (drawerSection) {
+          const drawerNode =
+            findDrawerNodeFromHit(event.object) ??
+            model.getObjectByName(SHKAF_NODE_MAP[drawerSection.id])
+          if (drawerNode) {
+            handleDrawerClick(drawerSection, drawerNode)
+            return
+          }
         }
       }
 
       toggleDoors()
     },
-    [doorsOpen, animating, toggleDoors, handleDrawerClick, dragThresholdPx],
+    [doorsOpen, animating, toggleDoors, handleDrawerClick, dragThresholdPx, model, controls],
   )
 
   const handlePointerOver = useCallback(

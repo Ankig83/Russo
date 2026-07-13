@@ -199,15 +199,19 @@ export const DRAWER_TABL_NODES = {
 /** Материалы табличек — текст на меди */
 export const PLAQUE_MATERIALS = ['prostranstva', 'avtorskie_m', 'project_M', 'about']
 
-/** Материал таблички → section.id по смыслу названия (не по номеру tabl_N) */
+/**
+ * Материал таблички → section.id (совпадает с позицией в GLB):
+ * tabl_1/prostranstva → tl, tabl_2/avtorskie_m → tr,
+ * tabl_3/project_M → bl, tabl_4/about → br
+ */
 export const PLAQUE_MATERIAL_TO_SECTION = {
   prostranstva: 'drawer_tl',
-  project_M: 'drawer_tr',
-  avtorskie_m: 'drawer_bl',
+  avtorskie_m: 'drawer_tr',
+  project_M: 'drawer_bl',
   about: 'drawer_br',
 }
 
-/** Фронты ящиков — не кликабельны, навигация через tabl_* */
+/** Фронты ящиков drawer_tl/tr/bl/br — кликабельны вместе с tabl_* */
 export const DRAWER_FRONT_NODES = ['drawer_tl', 'drawer_tr', 'drawer_bl', 'drawer_br']
 
 /** @deprecated 2D-оверлеи — таблички теперь в GLB */
