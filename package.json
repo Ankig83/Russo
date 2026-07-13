@@ -8,6 +8,9 @@
     "build": "vite build",
     "build:vps": "vite build",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run lint && npm run test && npm run build",
     "preview": "vite preview",
     "optimize:glb": "gltf-transform resize public/models/shkaf_full.glb public/models/shkaf_tmp.glb --width 2048 --height 2048 && gltf-transform webp public/models/shkaf_tmp.glb public/models/shkaf.glb --quality 92 && del public\\models\\shkaf_tmp.glb"
   },
@@ -15,7 +18,6 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@react-three/postprocessing": "^3.0.4",
-    "axios": "^1.17.0",
     "gsap": "^3.15.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -36,6 +38,7 @@
     "globals": "^17.6.0",
     "heic-convert": "^2.1.0",
     "tailwindcss": "^4.3.0",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vitest": "^4.1.10"
   }
 }
