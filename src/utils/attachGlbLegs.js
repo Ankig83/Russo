@@ -13,12 +13,12 @@ const LEG_MATERIAL_REFERENCE_ORDER = [
 ]
 
 const AGED_BRASS = {
-  color: '#b89a55',
-  metalness: 0.9,
-  roughness: 0.42,
-  envMapIntensity: 0.72,
-  clearcoat: 0.04,
-  clearcoatRoughness: 0.58,
+  color: '#754522',
+  metalness: 0.76,
+  roughness: 0.56,
+  envMapIntensity: 0.3,
+  clearcoat: 0,
+  clearcoatRoughness: 0.7,
 }
 
 function findCabinetReferenceMaterial(shkafRoot) {
@@ -36,8 +36,8 @@ function findCabinetReferenceMaterial(shkafRoot) {
 }
 
 /**
- * Состаренная латунь как в референсе:
- * тёплый золотисто-оливковый тон + roughness/normal фактура корпуса.
+ * Состаренная бронзовая латунь как в референсе:
+ * глубокий коричневый тон без яркого ювелирного золота + фактура корпуса.
  * Alpha намеренно отключена — тонкая геометрия ножек остаётся целой.
  */
 function prepareLegMaterial(reference) {

@@ -43,18 +43,18 @@ export const HERO_LIGHTBOX_ONLY = true
 
 /** Настройки геройской сцены: лайтбокс-стена + отражающий пол */
 export const HERO = {
-  /** Тёмный фон, чтобы лайтбокс читался */
-  background: '#050505',
+  /** Глубокий серо-зелёный фон как у спокойной предметной съёмки */
+  background: '#080b0a',
   /** Светящаяся стена-лайтбокс за шкафом — молочный рассеянный свет */
   lightbox: {
-    /** молочно-белый (чуть тёплый) */
-    color: '#fff6ec',
+    /** приглушённый нейтральный серо-зелёный вместо белого пересвета */
+    color: '#d2d9d4',
     /** высота как у бывшего луча, ширина ~3 шкафа */
     position: [0, 3.0, -2.4],
     width: 4.2,
     height: 6.4,
-    /** яркость (>1 → уходит за bloom threshold, светится как луч) */
-    strength: 2.6,
+    /** ниже единицы: панель остаётся читаемой, но не выбивает детали шкафа */
+    strength: 0.88,
     /** мягкость краёв (0..0.5 от размера) */
     feather: 0.14,
   },
@@ -65,7 +65,7 @@ export const HERO = {
     aimAt: [0, 1.2, 0],
     width: 4.2,
     height: 6.0,
-    intensity: 2.4,
+    intensity: 1.5,
   },
   /**
    * Ободковый свет сверху-сзади-СПРАВА — очерчивает силуэт и слегка
@@ -74,7 +74,7 @@ export const HERO = {
   rimLight: {
     color: '#ffe9d6',
     position: [0.6, 3.4, -2.0],
-    intensity: 6.0,
+    intensity: 3.2,
     distance: 8,
     decay: 2,
   },
@@ -88,7 +88,7 @@ export const HERO = {
     aimAt: [0, 1.4, 0.35],
     width: 1.4,
     height: 3.6,
-    intensity: 1.5,
+    intensity: 1.05,
   },
   /**
    * Зеркальный контурный свет СПРАВА-спереди — та же цель, симметричная
@@ -100,7 +100,7 @@ export const HERO = {
     aimAt: [0, 1.4, 0.35],
     width: 1.4,
     height: 3.6,
-    intensity: 1.5,
+    intensity: 1.05,
   },
   /**
    * Мягкий beauty-свет только на внешние дверки: поднимает патину без влияния
@@ -112,7 +112,7 @@ export const HERO = {
     aimAt: [0, 1.38, 0.28],
     width: 3.2,
     height: 2.5,
-    intensity: 1.8,
+    intensity: 1.15,
   },
   /**
    * Узкий fill на медальон (береста + кожа + ручки) — читает рельеф и прожилки.
@@ -124,7 +124,7 @@ export const HERO = {
     aimAt: [0, 1.38, 0.3],
     width: 1.05,
     height: 1.08,
-    intensity: 1.75,
+    intensity: 0.95,
   },
   /**
    * Directional-тени: пол (шкаф + ножки) и фронт дверей (ручки → beresta).
@@ -134,7 +134,7 @@ export const HERO = {
     floor: {
       position: [1.4, 8.2, 2.6],
       target: [0, 0.15, 0],
-      intensity: 0.34,
+      intensity: 0.52,
       color: '#fff0e6',
       mapSize: 2048,
       radius: 2.2,
@@ -160,10 +160,10 @@ export const HERO = {
     color: '#070707',
     size: 44,
     resolution: 512,
-    mirror: 0.78,
+    mirror: 0.55,
     blur: [220, 80],
     mixBlur: 1.1,
-    mixStrength: 3.4,
+    mixStrength: 2.2,
     roughness: 0.82,
     metalness: 0.55,
   },
@@ -225,19 +225,18 @@ export const CORPUS_PBR = {
 /** Береста — тёплая, с рельефом прожилок (normal + bump из GLB) */
 export const BERESTA_PBR = {
   /**
-   * Множитель albedo. #ffffff = как в GLB (baseColorFactor не задан).
-   * Не тинтить — иначе уходит от оригинальной береста_темная.
+   * Тёплый янтарно-коричневый множитель albedo, как у медальона в референсе.
    */
-  color: '#ffffff',
-  roughness: 0.74,
+  color: '#c89558',
+  roughness: 0.78,
   /** GLB normal = albedo, не используем; рельеф через bump */
   normalScale: 1,
-  bumpScale: 0.1,
-  env: 0.18,
+  bumpScale: 0.075,
+  env: 0.12,
   specular: 0.08,
-  sheen: 0.1,
-  sheenRoughness: 0.68,
-  sheenColor: '#d8a860',
+  sheen: 0.07,
+  sheenRoughness: 0.76,
+  sheenColor: '#9b642d',
 }
 
 /**
@@ -309,9 +308,9 @@ export const STUDIO = {
     envScale: 0.14,
   },
   camera: {
-    fov: 34,
-    position: [0.09, 1.85, 6.55],
-    target: [0, 1.7, 0],
+    fov: 30,
+    position: [0, 1.3, 6.2],
+    target: [0, 1.3, 0],
   },
   /** Шкаф — центр корпуса на x=0 (лайтбокс / логотип); alignOffset — ручной дотюнинг */
   object: {
@@ -407,15 +406,15 @@ export const STUDIO = {
   postprocessing: {
     aoRadius: 1.6,
     aoIntensity: 1.5,
-    bloomIntensity: 0.07,
+    bloomIntensity: 0.04,
     bloomThreshold: 0.88,
     bloomSmoothing: 0.2,
     noiseOpacity: 0.025,
     vignetteOffset: 0.68,
     vignetteDarkness: 0.32,
-    contrast: 0.08,
-    brightness: 0.01,
-    saturation: 0.05,
+    contrast: 0.12,
+    brightness: -0.05,
+    saturation: -0.02,
   },
 }
 
@@ -493,9 +492,9 @@ export const STUDIO_CAMERA_START_DISTANCE = getStudioCameraStartDistance(STUDIO.
  */
 export const STUDIO_MOBILE = {
   camera: {
-    fov: 32,
-    position: [-0.72, 0.48, 3.35],
-    target: [0, 0.81, 0],
+    fov: 30,
+    position: [0, 1.2, 5.15],
+    target: [0, 1.2, 0],
   },
   orbit: {
     minAzimuth: -0.55,
