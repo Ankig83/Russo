@@ -235,7 +235,6 @@ export default function GradientCarousel({ images }) {
         img.loading = i < 4 ? 'eager' : 'lazy'
         img.fetchPriority = i < 4 ? 'high' : 'auto'
         img.draggable = false
-        img.crossOrigin = 'anonymous'
         img.src = src
         card.appendChild(img)
         fragment.appendChild(card)
@@ -310,6 +309,7 @@ export default function GradientCarousel({ images }) {
     function buildPalette() {
       gradPalette = items.map((it, i) => {
         const img = it.el.querySelector('img')
+        if (!img?.complete || !img.naturalWidth) return fallbackFromIndex(i)
         return extractColors(img, i)
       })
     }
@@ -515,27 +515,18 @@ export default function GradientCarousel({ images }) {
       createCards()
       measure()
       updateTransforms()
-      await waitForImages()
-      if (destroyed) return
       buildPalette()
-
-      const half = TRACK / 2
-      let closestIdx = 0
-      let closestDist = Infinity
-      for (let i = 0; i < items.length; i++) {
-        let pos = items[i].x - SCROLL_X
-        if (pos < -half) pos += TRACK
-        if (pos > half) pos -= TRACK
-        const d = Math.abs(pos)
-        if (d < closestDist) {
-          closestDist = d
-          closestIdx = i
-        }
-      }
-      setActiveGradient(closestIdx)
+      setActiveGradient(0)
       resizeBG()
       drawBackground()
       startCarousel()
+
+      // Палитра по загруженным фото — без блокировки старта карусели
+      waitForImages().then(() => {
+        if (destroyed) return
+        buildPalette()
+        updateTransforms()
+      })
     }
 
     init()

@@ -1,3 +1,4 @@
+import * as THREE from 'three'
 import {
   GLB_LEG_NODES,
   GLB_LEG_TRANSFORMS,
@@ -5,9 +6,8 @@ import {
 } from '../constants/shkafNodes'
 import { findByName } from './cabinetBounds'
 
-/** Материалы корпуса шкафа — приоритет для ножек (как у фасада / корпуса) */
+/** Материалы корпуса — без patina_PBR (alpha на тонкой геометрии ножек даёт «дыры») */
 const LEG_MATERIAL_REFERENCE_ORDER = [
-  'patina_PBR',
   'Scratched copper metal',
   'Material.002',
 ]
@@ -26,6 +26,19 @@ function findCabinetReferenceMaterial(shkafRoot) {
   return null
 }
 
+/** Ножки — непрозрачный клон без alpha-карт (тонкие полигоны иначе «пропадают») */
+function prepareLegMaterial(reference) {
+  const mat = reference.clone()
+  mat.transparent = false
+  mat.opacity = 1
+  mat.alphaTest = 0
+  mat.alphaMap = null
+  mat.depthWrite = true
+  mat.side = THREE.DoubleSide
+  mat.needsUpdate = true
+  return mat
+}
+
 /** Клонирует материал корпуса на mesh-ножки (текстура как у шкафа) */
 export function syncLegMaterialsFromCabinet(model) {
   const shkafRoot = findByName(model, SHKAF_ROOT_NAME)
@@ -40,8 +53,7 @@ export function syncLegMaterialsFromCabinet(model) {
     if (!leg) return
     leg.traverse((child) => {
       if (!child.isMesh) return
-      child.material = reference.clone()
-      child.material.needsUpdate = true
+      child.material = prepareLegMaterial(reference)
       applied += 1
     })
   })

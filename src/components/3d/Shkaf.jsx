@@ -622,6 +622,16 @@ function finalizeShkafSceneGraph(model) {
     if (mesh?.isMesh) mesh.raycast = () => null
   })
 
+  // Группы анимации — mesh перекрывает фронты drawer_tl/tr/bl/br и таблички
+  ;['drawer_1', 'drawer_2'].forEach((name) => {
+    const node = model.getObjectByName(name)
+    if (!node) return
+    node.raycast = () => null
+    node.traverse((child) => {
+      if (child.isMesh) child.raycast = () => null
+    })
+  })
+
   Object.entries(DRAWER_TABL_NODES).forEach(([sectionId, tablName]) => {
     const drawer = model.getObjectByName(SHKAF_NODE_MAP[sectionId])
     const tabl = model.getObjectByName(tablName)
