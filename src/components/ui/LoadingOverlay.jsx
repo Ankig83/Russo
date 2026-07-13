@@ -3,6 +3,7 @@ import { useProgress } from '@react-three/drei'
 import gsap from 'gsap'
 import { useAppStore } from '../../store/appStore'
 import { useIsMobile } from '../../hooks/useMediaQuery'
+import { russoAssetsProgress, russoOverlayPhase } from '../../utils/russoLog'
 
 const MIN_SHOW_MS = 7500
 const MIN_SHOW_MS_MOBILE = 6000
@@ -88,13 +89,17 @@ export default function LoadingOverlay() {
   const logoSize = isMobile ? 240 : 360
   const cornerInset = isMobile ? 12 : 24
   const minShowMs = isMobile ? MIN_SHOW_MS_MOBILE : MIN_SHOW_MS
-  const { active, progress } = useProgress()
+  const { active, progress, item } = useProgress()
   const wrapRef  = useRef(null)
   const logoRef  = useRef(null)
   const setLoadingDone = useAppStore((s) => s.setLoadingDone)
   const [hidden, setHidden] = useState(false)
   const startMs  = useRef(Date.now())
   const exitDone = useRef(false)
+
+  useEffect(() => {
+    russoAssetsProgress({ active, progress, item })
+  }, [active, progress, item])
 
   useEffect(() => {
     const el = document.createElement('style')
@@ -122,6 +127,15 @@ export default function LoadingOverlay() {
     const elapsed = Date.now() - startMs.current
     const delay   = Math.max(0, minShowMs - elapsed)
 
+    if (delay > 0) {
+      russoOverlayPhase('waiting-min', {
+        minShowMs,
+        elapsedMs: elapsed,
+        waitMoreMs: delay,
+        tip: 'сцена может уже крутиться под оверлеем',
+      })
+    }
+
     const timer = setTimeout(() => {
       if (exitDone.current) return
       exitDone.current = true
@@ -137,10 +151,12 @@ export default function LoadingOverlay() {
       const targetY = -(rect.top - insetTop)
 
       gsap.killTweensOf(logo)
+      russoOverlayPhase('exit-start', { elapsedMs: Date.now() - startMs.current })
 
       const tl = gsap.timeline({ onComplete: () => {
         setLoadingDone()
         setHidden(true)
+        russoOverlayPhase('done')
       }})
 
       tl.to(logo, {

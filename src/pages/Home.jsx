@@ -2,7 +2,9 @@ import { useEffect } from 'react'
 import Scene from '../components/3d/Scene'
 import Header from '../components/ui/Header'
 import LoadingOverlay from '../components/ui/LoadingOverlay'
+import DebugHud from '../components/ui/DebugHud'
 import { useShkafStore } from '../store/shkafStore'
+import { russoLog, russoPatch } from '../utils/russoLog'
 
 /** Главная страница с интерактивным 3D-шкафом */
 export default function Home() {
@@ -11,6 +13,13 @@ export default function Home() {
   // Сброс состояния шкафа при возврате на главную
   useEffect(() => {
     reset()
+    russoPatch({
+      doorsOpen: false,
+      animating: false,
+      activeDrawerId: null,
+      lastEvent: 'home reset',
+    })
+    russoLog('info', 'home', 'сброс состояния шкафа (возврат на главную)')
   }, [reset])
 
   return (
@@ -18,6 +27,7 @@ export default function Home() {
       <Scene />
       <Header />
       <LoadingOverlay />
+      <DebugHud />
     </div>
   )
 }

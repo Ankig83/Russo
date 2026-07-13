@@ -20,6 +20,7 @@ import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
 import { SCENE_BG_STYLE, SCENE_CANVAS_BG, TONE_MAPPING_EXPOSURE } from '../../constants/scene'
 import { STUDIO, getStudioCameraConfig, getStudioOrbitConfig, getStudioCameraStartDistance, DEBUG_LOG_CAMERA_POSITION, USE_HDRI_ONLY, LIGHT_LAYERS, USE_REFERENCE_VOID_LOOK, REFERENCE_VOID, USE_HERO_LOOK, HERO, HERO_LIGHTBOX_ONLY, getEffectiveSplitCorpusLight, USE_STUDIO_CAMERA } from '../../constants/studioScene'
 import { useAppStore } from '../../store/appStore'
+import { russoCanvasReady, russoLog } from '../../utils/russoLog'
 
 /** ВРЕМЕННО: гасим все источники, кроме лайтбокса */
 const lightboxOnly = USE_HERO_LOOK && HERO_LIGHTBOX_ONLY
@@ -74,11 +75,12 @@ function handleCanvasCreated({ gl, scene }) {
   gl.shadowMap.enabled = !USE_REFERENCE_VOID_LOOK || REFERENCE_VOID.directionalShadow
   gl.shadowMap.type = THREE.PCFSoftShadowMap
   scene.background = new THREE.Color(bg)
+  russoCanvasReady()
 
   const canvas = gl.domElement
   canvas.addEventListener('webglcontextlost', (e) => {
     e.preventDefault()
-    console.warn('WebGL context lost — закрой вкладку и открой заново')
+    russoLog('error', 'scene', 'WebGL context lost — закрой вкладку и открой заново')
     window.dispatchEvent(new CustomEvent('russo:webgl-lost'))
   })
   // авто-reload при restored → бесконечный цикл на тяжёлой сцене

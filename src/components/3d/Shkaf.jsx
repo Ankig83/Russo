@@ -41,6 +41,13 @@ import {
   findDrawerSectionFromHit,
   getDrawerBodyName,
 } from '../../utils/drawerHit'
+import {
+  russoShkafReady,
+  russoInteractState,
+  russoClick,
+  russoLog,
+  describeHitObject,
+} from '../../utils/russoLog'
 import { USE_RAW_GLB_MATERIALS } from '../../constants/studioScene'
 import { applyDoorPanelPatinaTextures, loadPatinaTextures } from '../../utils/patinaTextures'
 import {
@@ -693,7 +700,7 @@ function Shkaf({ sceneScale = 1 }) {
   const drawerBasePositions = useRef(new Map())
   const navigate = useNavigate()
 
-  const { doorsOpen, animating, setDoorsOpen, setAnimating, setActiveDrawerId } =
+  const { doorsOpen, animating, activeDrawerId, setDoorsOpen, setAnimating, setActiveDrawerId } =
     useShkafStore()
 
   const model = useMemo(() => {
@@ -774,28 +781,54 @@ function Shkaf({ sceneScale = 1 }) {
 
     setInnerDoorBackfacesVisible(model, false)
 
-    console.log('РУССО: двери найдены', {
+    const drawers = drawerSections.map((s) => {
+      const nodeName = SHKAF_NODE_MAP[s.id]
+      const node = model.getObjectByName(nodeName)
+      const tablName = DRAWER_TABL_NODES[s.id]
+      const tabl = tablName ? model.getObjectByName(tablName) : null
+      const tablMat = tabl?.isMesh
+        ? (Array.isArray(tabl.material) ? tabl.material[0] : tabl.material)?.name
+        : null
+      return {
+        id: s.id,
+        label: s.label,
+        route: s.route,
+        node: nodeName,
+        nodeFound: !!node,
+        tabl: tablName,
+        tablFound: !!tabl,
+        tablParent: tabl?.parent?.name ?? null,
+        tablMaterial: tablMat,
+      }
+    })
+
+    russoShkafReady({
       door_left: left?.name ?? null,
       door_right: right?.name ?? null,
-      closedY: { left: closedLeft, right: closedRotations.current.right },
       shkaf: !!shkafGroup,
-      drawers: drawerSections.map((s) => ({
-        id: s.id,
-        found: !!model.getObjectByName(SHKAF_NODE_MAP[s.id]),
-      })),
+      drawers,
     })
   }, [model, shkafGroup])
 
+  useEffect(() => {
+    russoInteractState({ doorsOpen, animating, activeDrawerId })
+  }, [doorsOpen, animating, activeDrawerId])
+
   const animateDoors = useCallback(
     (open) => {
-      if (animating) return
+      if (animating) {
+        russoLog('warn', 'doors', 'пропуск: уже идёт анимация', { wantOpen: open })
+        return
+      }
 
+      russoLog('info', 'doors', open ? 'открытие дверей…' : 'закрытие дверей…')
       setAnimating(true)
 
       const left = leftDoorRef.current
       const right = rightDoorRef.current
 
       if (!left && !right) {
+        russoLog('warn', 'doors', 'pivot дверей не найдены')
         setDoorsOpen(open)
         setAnimating(false)
         return
@@ -809,6 +842,7 @@ function Shkaf({ sceneScale = 1 }) {
           if (!open) setInnerDoorBackfacesVisible(model, false)
           setDoorsOpen(open)
           setAnimating(false)
+          russoLog('info', 'doors', open ? 'двери открыты' : 'двери закрыты')
         },
       })
 
@@ -954,6 +988,10 @@ function Shkaf({ sceneScale = 1 }) {
       clearDrawerHover()
       setAnimating(true)
       setActiveDrawerId(section.id)
+      russoLog('info', 'drawer', `выдвижение ${section.id} → ${section.route}`, {
+        node: target.name,
+        label: section.label,
+      })
 
       const pull = getPullDirection(target)
 
@@ -969,6 +1007,7 @@ function Shkaf({ sceneScale = 1 }) {
         onComplete: () => {
           setTimeout(() => {
             setAnimating(false)
+            russoLog('info', 'nav', `navigate ${section.route}`)
             navigate(section.route)
           }, NAVIGATE_DELAY_MS)
         },
@@ -1023,27 +1062,80 @@ function Shkaf({ sceneScale = 1 }) {
   const handleClick = useCallback(
     (event) => {
       event.stopPropagation()
-      // После лагов pointerup может не успеть — разблокируем orbit до обработки клика
       orbitBlocked.current = false
       if (controls) controls.enabled = true
 
       const dx = event.clientX - pointerDownPos.current.x
       const dy = event.clientY - pointerDownPos.current.y
-      if (Math.sqrt(dx * dx + dy * dy) > dragThresholdPx) return
+      const dragPx = Math.round(Math.sqrt(dx * dx + dy * dy) * 10) / 10
+      const hitInfo = describeHitObject(event.object)
 
-      const { activeDrawerId } = useShkafStore.getState()
+      if (dragPx > dragThresholdPx) {
+        russoClick('ignore-drag', {
+          hit: event.object,
+          dragPx,
+          threshold: dragThresholdPx,
+          reason: `сдвиг ${dragPx}px > порога ${dragThresholdPx}px`,
+        })
+        return
+      }
 
-      if (doorsOpen && !animating && !activeDrawerId) {
+      const { activeDrawerId: activeId } = useShkafStore.getState()
+
+      if (animating || activeId) {
+        russoClick('blocked', {
+          hit: event.object,
+          dragPx,
+          reason: animating
+            ? 'идёт анимация дверей/ящика'
+            : `activeDrawerId=${activeId}`,
+          doorsOpen,
+          animating,
+          activeDrawerId: activeId,
+        })
+        return
+      }
+
+      if (doorsOpen) {
         const drawerSection = findDrawerSectionFromHit(event.object)
         if (drawerSection) {
           const drawerNode =
             findDrawerNodeFromHit(event.object) ??
             model.getObjectByName(SHKAF_NODE_MAP[drawerSection.id])
           if (drawerNode) {
+            russoClick('drawer', {
+              hit: event.object,
+              dragPx,
+              sectionId: drawerSection.id,
+              route: drawerSection.route,
+              nodeName: drawerNode.name,
+              label: drawerSection.label,
+              hitInfo,
+            })
             handleDrawerClick(drawerSection, drawerNode)
             return
           }
+          russoClick('miss-close', {
+            hit: event.object,
+            dragPx,
+            sectionId: drawerSection.id,
+            reason: 'section найден, но нода ящика нет — закрываем двери',
+          })
+        } else {
+          russoClick('miss-close', {
+            hit: event.object,
+            dragPx,
+            reason: 'hit не ящик/tabl — закрываем двери',
+            hitInfo,
+          })
         }
+      } else {
+        russoClick('doors', {
+          hit: event.object,
+          dragPx,
+          reason: 'двери закрыты → открываем',
+          hitInfo,
+        })
       }
 
       toggleDoors()
