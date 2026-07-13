@@ -497,17 +497,18 @@ export const STUDIO_MOBILE = {
     minAzimuth: -0.32,
     maxAzimuth: 0.32,
     minPolar: 1.22,
-    maxPolar: 1.62,
+    maxPolar: 1.58,
     minDistance: 1.5,
-    enablePan: false,
+    /** Два пальца: pinch = zoom, сдвиг = pan (как ПКМ на десктопе) */
+    enablePan: true,
     panLimits: {
-      targetMinOffset: { x: 0.24, y: 0.72, z: 0.2 },
-      targetMaxOffset: { x: 0.24, y: 0.34, z: 0.2 },
-      minCameraY: 0.32,
-      maxCameraY: 2.5,
+      targetOffset: { x: 0.3, y: 0.42, z: 0.25 },
+      minCameraY: 0.55,
+      maxCameraY: 2.75,
     },
     rotateSpeed: 0.72,
     zoomSpeed: 0.9,
+    panSpeed: 1,
   },
 }
 

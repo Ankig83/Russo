@@ -353,8 +353,10 @@ export default function Scene() {
           target={camera.target}
           enablePan={orbit.enablePan ?? true}
           enableZoom
+          screenSpacePanning
           rotateSpeed={orbit.rotateSpeed ?? 1}
           zoomSpeed={orbit.zoomSpeed ?? 1}
+          panSpeed={orbit.panSpeed ?? 1}
           minAzimuthAngle={orbit.minAzimuth}
           maxAzimuthAngle={orbit.maxAzimuth}
           minPolarAngle={orbit.minPolar}
