@@ -324,76 +324,89 @@ function tuneBrassHandleMaterial(mat, meshName = '') {
   mat.needsUpdate = true
 }
 
-/** Кожаный ободок медальона — тёмный, с нормалями из GLB */
+/**
+ * Натуральная кожа: сохраняем цветовую карту почти без затемняющего tint,
+ * смягчаем normal и возвращаем широкий, приглушённый блик вместо пластика.
+ */
 function tuneMedallionRimLeatherMaterial(mat) {
   if (!mat.isMeshStandardMaterial && !mat.isMeshPhysicalMaterial) return
 
   if (mat.map) {
-    mat.color.set('#2a1810')
+    mat.color.set('#bda58f')
     mat.map = mat.map.clone()
     mat.map.colorSpace = THREE.SRGBColorSpace
   } else {
-    mat.color.set('#1e1208')
+    mat.color.set('#4b3022')
   }
 
   if (mat.normalMap) {
     mat.normalMap = cloneLinearFromMap(mat.normalMap)
-    mat.normalScale.set(1.75, 1.75)
+    mat.normalScale.set(0.48, 0.48)
   }
 
   mat.metalness = 0
   mat.metalnessMap = null
   mat.roughnessMap = null
-  mat.roughness = 0.86
+  mat.roughness = 0.72
   mat.emissive.set('#000000')
   mat.emissiveIntensity = 0
+  mat.transparent = false
+  mat.opacity = 1
+  mat.alphaMap = null
 
-  if ('envMapIntensity' in mat) mat.envMapIntensity = 0.1
-  if ('specularIntensity' in mat) mat.specularIntensity = 0.035
-  if ('specularColor' in mat) mat.specularColor.set('#6a3f24')
-  if ('clearcoat' in mat) mat.clearcoat = 0
+  if ('ior' in mat) mat.ior = 1.46
+  if ('envMapIntensity' in mat) mat.envMapIntensity = 0.24
+  if ('specularIntensity' in mat) mat.specularIntensity = 0.26
+  if ('specularColor' in mat) mat.specularColor.set('#8a6a55')
+  if ('clearcoat' in mat) mat.clearcoat = 0.015
+  if ('clearcoatRoughness' in mat) mat.clearcoatRoughness = 0.82
   if ('sheen' in mat) {
-    mat.sheen = 0.06
-    mat.sheenRoughness = 0.78
-    mat.sheenColor.set('#3a2218')
+    mat.sheen = 0.18
+    mat.sheenRoughness = 0.84
+    mat.sheenColor.set('#6f4934')
   }
 
   boostTextureDetail(mat, 16)
   mat.needsUpdate = true
 }
 
-/** Кожаные ручки — чуть светлее ободка, тот же grain */
+/** Ручки — слегка отполированная прикосновениями кожа, но без лакированного блеска. */
 function tuneMedallionHandleLeatherMaterial(mat) {
   if (!mat.isMeshStandardMaterial && !mat.isMeshPhysicalMaterial) return
 
   if (mat.map) {
-    mat.color.set('#3d2818')
+    mat.color.set('#cbb096')
     mat.map = mat.map.clone()
     mat.map.colorSpace = THREE.SRGBColorSpace
   } else {
-    mat.color.set('#2a1810')
+    mat.color.set('#62412d')
   }
 
   if (mat.normalMap) {
     mat.normalMap = cloneLinearFromMap(mat.normalMap)
-    mat.normalScale.set(1.85, 1.85)
+    mat.normalScale.set(0.56, 0.56)
   }
 
   mat.metalness = 0
   mat.metalnessMap = null
   mat.roughnessMap = null
-  mat.roughness = 0.8
+  mat.roughness = 0.66
   mat.emissive.set('#000000')
   mat.emissiveIntensity = 0
+  mat.transparent = false
+  mat.opacity = 1
+  mat.alphaMap = null
 
-  if ('envMapIntensity' in mat) mat.envMapIntensity = 0.12
-  if ('specularIntensity' in mat) mat.specularIntensity = 0.05
-  if ('specularColor' in mat) mat.specularColor.set('#7a4f32')
-  if ('clearcoat' in mat) mat.clearcoat = 0
+  if ('ior' in mat) mat.ior = 1.46
+  if ('envMapIntensity' in mat) mat.envMapIntensity = 0.28
+  if ('specularIntensity' in mat) mat.specularIntensity = 0.3
+  if ('specularColor' in mat) mat.specularColor.set('#96745d')
+  if ('clearcoat' in mat) mat.clearcoat = 0.02
+  if ('clearcoatRoughness' in mat) mat.clearcoatRoughness = 0.76
   if ('sheen' in mat) {
-    mat.sheen = 0.08
-    mat.sheenRoughness = 0.72
-    mat.sheenColor.set('#4a2c1c')
+    mat.sheen = 0.22
+    mat.sheenRoughness = 0.78
+    mat.sheenColor.set('#80543a')
   }
 
   boostTextureDetail(mat, 16)
@@ -405,19 +418,24 @@ function tuneRimAndHandleHighlightMaterial(mat, meshName = '') {
   if (!mat.isMeshStandardMaterial && !mat.isMeshPhysicalMaterial) return
 
   if (mat.name === 'Материал.003') {
-    mat.color.set('#241812')
+    mat.color.set('#513628')
     mat.metalness = 0
     mat.metalnessMap = null
     mat.roughnessMap = null
     mat.normalMap = null
-    mat.roughness = 0.84
+    mat.roughness = 0.7
     mat.emissive.set('#000000')
     mat.emissiveIntensity = 0
-    if ('envMapIntensity' in mat) mat.envMapIntensity = 0.08
-    if ('specularIntensity' in mat) mat.specularIntensity = 0.025
-    if ('specularColor' in mat) mat.specularColor.set('#7a4f32')
+    if ('ior' in mat) mat.ior = 1.46
+    if ('envMapIntensity' in mat) mat.envMapIntensity = 0.22
+    if ('specularIntensity' in mat) mat.specularIntensity = 0.24
+    if ('specularColor' in mat) mat.specularColor.set('#876651')
     if ('clearcoat' in mat) mat.clearcoat = 0
-    if ('sheen' in mat) mat.sheen = 0
+    if ('sheen' in mat) {
+      mat.sheen = 0.16
+      mat.sheenRoughness = 0.84
+      mat.sheenColor.set('#684533')
+    }
     mat.needsUpdate = true
     return
   }
