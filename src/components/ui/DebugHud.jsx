@@ -53,6 +53,7 @@ export default function DebugHud() {
             {hit.dragPx != null ? ` · drag ${hit.dragPx}px` : ''}
           </div>
           {hit.object && <div>hit: {hit.object}</div>}
+          {hit.reason && <div className="text-amber-200/80">{hit.reason}</div>}
           {hit.materials?.length > 0 && <div>mat: {hit.materials.join(', ')}</div>}
           {hit.sectionId && (
             <div>
@@ -60,7 +61,6 @@ export default function DebugHud() {
               {hit.route ? ` ${hit.route}` : ''}
             </div>
           )}
-          {hit.reason && <div className="text-red-300/90">{hit.reason}</div>}
         </div>
       )}
       <div className="mt-1 text-white/35">консоль: фильтр «РУССО» · скрыть HUD: ?debug=0</div>

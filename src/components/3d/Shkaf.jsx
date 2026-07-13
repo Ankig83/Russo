@@ -37,8 +37,7 @@ import { USE_STUDIO_CAMERA, USE_HDRI_ONLY, LIGHT_LAYERS, getEffectiveSplitCorpus
 import { getCabinetBounds, getCabinetPlacement, findByName } from '../../utils/cabinetBounds'
 import { attachGlbLegs } from '../../utils/attachGlbLegs'
 import {
-  findDrawerNodeFromHit,
-  findDrawerSectionFromHit,
+  findDrawerFromIntersections,
   getDrawerBodyName,
 } from '../../utils/drawerHit'
 import {
@@ -512,10 +511,27 @@ function getPullDirection(node) {
   return _pullDir.clone()
 }
 
-/** Порог смещения (px) — выше него клик считается вращением камеры */
-const DRAG_THRESHOLD_DESKTOP_PX = 5
-/** Выше — меньше ложных отмен тапа из‑за лёгкого сдвига камеры OrbitControls */
-const DRAG_THRESHOLD_MOBILE_PX = 28
+/** Порог смещения (px) — выше = начало вращения камеры, не тап */
+const DRAG_THRESHOLD_DESKTOP_PX = 8
+const DRAG_THRESHOLD_MOBILE_PX = 36
+/** Дольше этого — не считаем тапом (удержание / orbit) */
+const TAP_MAX_MS = 450
+
+/** Включить/выключить raycast дверей (когда открыты — не перехватывают клик по ящикам) */
+function setDoorRaycastEnabled(model, enabled) {
+  ;(['left', 'right']).forEach((side) => {
+    const door = findDoorPivotNode(model, side)
+    if (!door) return
+    door.traverse((child) => {
+      if (!child.isMesh) return
+      if (child.name?.includes('__inner_copper')) {
+        child.raycast = () => null
+        return
+      }
+      child.raycast = enabled ? THREE.Mesh.prototype.raycast : () => null
+    })
+  })
+}
 
 function attachCabinetSceneRoots(model) {
   const shkafRoot = model.getObjectByName(SHKAF_ROOT_NAME)
@@ -1024,31 +1040,156 @@ function Shkaf({ sceneScale = 1 }) {
   )
 
   const orbitBlocked = useRef(false)
+  const pointerDownAt = useRef(0)
+  const dragStarted = useRef(false)
+  const tapHandled = useRef(false)
 
-  const handlePointerDown = useCallback((event) => {
-    pointerDownPos.current = { x: event.clientX, y: event.clientY }
-    // На таче orbit не блокируем — один палец крутит камеру, тап открывает шкаф
-    if (event.pointerType === 'touch') return
-    // ПКМ / колесо — не трогаем OrbitControls (pan / zoom)
-    if (event.button !== 0) return
-    event.stopPropagation()
-    orbitBlocked.current = true
-    if (controls) controls.enabled = false
-  }, [controls])
-
-  const handlePointerUp = useCallback((event) => {
+  const releaseOrbit = useCallback(() => {
     if (!orbitBlocked.current) return
-    event.stopPropagation()
     orbitBlocked.current = false
     if (controls) controls.enabled = true
   }, [controls])
 
+  const processTap = useCallback(
+    (event) => {
+      const dx = event.clientX - pointerDownPos.current.x
+      const dy = event.clientY - pointerDownPos.current.y
+      const dragPx = Math.round(Math.sqrt(dx * dx + dy * dy) * 10) / 10
+      const intersections = event.intersections?.length
+        ? event.intersections
+        : event.object
+          ? [{ object: event.object, distance: 0 }]
+          : []
+
+      const { activeDrawerId: activeId, animating: isAnimating, doorsOpen: open } =
+        useShkafStore.getState()
+
+      if (isAnimating || activeId) {
+        russoClick('blocked', {
+          hit: event.object,
+          dragPx,
+          reason: isAnimating
+            ? 'идёт анимация дверей/ящика'
+            : `activeDrawerId=${activeId}`,
+          doorsOpen: open,
+          animating: isAnimating,
+          activeDrawerId: activeId,
+        })
+        return
+      }
+
+      if (open) {
+        const drawerHit = findDrawerFromIntersections(intersections, model)
+        if (drawerHit) {
+          const skipped = drawerHit.firstHitName !== drawerHit.object.name
+          russoClick('drawer', {
+            hit: drawerHit.object,
+            dragPx,
+            sectionId: drawerHit.section.id,
+            route: drawerHit.section.route,
+            nodeName: drawerHit.node.name,
+            label: drawerHit.section.label,
+            firstHitName: drawerHit.firstHitName,
+            usedDeeperHit: skipped,
+            reason: skipped
+              ? `первый hit «${drawerHit.firstHitName}», ящик глубже по лучу`
+              : undefined,
+          })
+          handleDrawerClick(drawerHit.section, drawerHit.node)
+          return
+        }
+
+        russoClick('miss-close', {
+          hit: event.object,
+          dragPx,
+          reason: 'по лучу нет drawer/tabl — закрываем двери',
+          hitInfo: describeHitObject(event.object),
+          intersectionNames: intersections.slice(0, 6).map((h) => h.object?.name),
+        })
+        toggleDoors()
+        return
+      }
+
+      russoClick('doors', {
+        hit: event.object,
+        dragPx,
+        reason: 'двери закрыты → открываем',
+        hitInfo: describeHitObject(event.object),
+      })
+      toggleDoors()
+    },
+    [model, handleDrawerClick, toggleDoors],
+  )
+
+  const handlePointerDown = useCallback(
+    (event) => {
+      pointerDownPos.current = { x: event.clientX, y: event.clientY }
+      pointerDownAt.current = performance.now()
+      dragStarted.current = false
+      tapHandled.current = false
+
+      // ПКМ / колесо — orbit (pan/zoom), не тап
+      if (event.pointerType !== 'touch' && event.button !== 0) return
+
+      // Блокируем orbit до явного drag — иначе тап по ящику срывается
+      event.stopPropagation()
+      orbitBlocked.current = true
+      if (controls) controls.enabled = false
+    },
+    [controls],
+  )
+
+  const handlePointerMove = useCallback(
+    (event) => {
+      if (!orbitBlocked.current || dragStarted.current) return
+      const dx = event.clientX - pointerDownPos.current.x
+      const dy = event.clientY - pointerDownPos.current.y
+      if (Math.sqrt(dx * dx + dy * dy) <= dragThresholdPx) return
+
+      dragStarted.current = true
+      releaseOrbit()
+      russoLog('info', 'click', `drag ≥${dragThresholdPx}px — orbit снова включён`)
+    },
+    [dragThresholdPx, releaseOrbit],
+  )
+
+  const handlePointerUp = useCallback(
+    (event) => {
+      const elapsed = performance.now() - pointerDownAt.current
+      const wasDrag = dragStarted.current
+      releaseOrbit()
+
+      if (wasDrag || tapHandled.current) return
+      if (elapsed > TAP_MAX_MS) {
+        russoClick('ignore-drag', {
+          hit: event.object,
+          dragPx: null,
+          reason: `удержание ${Math.round(elapsed)}ms > ${TAP_MAX_MS}ms`,
+        })
+        return
+      }
+
+      const dx = event.clientX - pointerDownPos.current.x
+      const dy = event.clientY - pointerDownPos.current.y
+      const dragPx = Math.sqrt(dx * dx + dy * dy)
+      if (dragPx > dragThresholdPx) {
+        russoClick('ignore-drag', {
+          hit: event.object,
+          dragPx: Math.round(dragPx),
+          threshold: dragThresholdPx,
+          reason: `сдвиг ${Math.round(dragPx)}px > порога`,
+        })
+        return
+      }
+
+      tapHandled.current = true
+      event.stopPropagation()
+      processTap(event)
+    },
+    [releaseOrbit, dragThresholdPx, processTap],
+  )
+
   useEffect(() => {
-    const releaseOrbit = () => {
-      if (!orbitBlocked.current) return
-      orbitBlocked.current = false
-      if (controls) controls.enabled = true
-    }
     window.addEventListener('pointerup', releaseOrbit)
     window.addEventListener('pointercancel', releaseOrbit)
     window.addEventListener('blur', releaseOrbit)
@@ -1057,106 +1198,29 @@ function Shkaf({ sceneScale = 1 }) {
       window.removeEventListener('pointercancel', releaseOrbit)
       window.removeEventListener('blur', releaseOrbit)
     }
-  }, [controls])
+  }, [releaseOrbit])
 
-  const handleClick = useCallback(
-    (event) => {
-      event.stopPropagation()
-      orbitBlocked.current = false
-      if (controls) controls.enabled = true
-
-      const dx = event.clientX - pointerDownPos.current.x
-      const dy = event.clientY - pointerDownPos.current.y
-      const dragPx = Math.round(Math.sqrt(dx * dx + dy * dy) * 10) / 10
-      const hitInfo = describeHitObject(event.object)
-
-      if (dragPx > dragThresholdPx) {
-        russoClick('ignore-drag', {
-          hit: event.object,
-          dragPx,
-          threshold: dragThresholdPx,
-          reason: `сдвиг ${dragPx}px > порога ${dragThresholdPx}px`,
-        })
-        return
-      }
-
-      const { activeDrawerId: activeId } = useShkafStore.getState()
-
-      if (animating || activeId) {
-        russoClick('blocked', {
-          hit: event.object,
-          dragPx,
-          reason: animating
-            ? 'идёт анимация дверей/ящика'
-            : `activeDrawerId=${activeId}`,
-          doorsOpen,
-          animating,
-          activeDrawerId: activeId,
-        })
-        return
-      }
-
-      if (doorsOpen) {
-        const drawerSection = findDrawerSectionFromHit(event.object)
-        if (drawerSection) {
-          const drawerNode =
-            findDrawerNodeFromHit(event.object) ??
-            model.getObjectByName(SHKAF_NODE_MAP[drawerSection.id])
-          if (drawerNode) {
-            russoClick('drawer', {
-              hit: event.object,
-              dragPx,
-              sectionId: drawerSection.id,
-              route: drawerSection.route,
-              nodeName: drawerNode.name,
-              label: drawerSection.label,
-              hitInfo,
-            })
-            handleDrawerClick(drawerSection, drawerNode)
-            return
-          }
-          russoClick('miss-close', {
-            hit: event.object,
-            dragPx,
-            sectionId: drawerSection.id,
-            reason: 'section найден, но нода ящика нет — закрываем двери',
-          })
-        } else {
-          russoClick('miss-close', {
-            hit: event.object,
-            dragPx,
-            reason: 'hit не ящик/tabl — закрываем двери',
-            hitInfo,
-          })
-        }
-      } else {
-        russoClick('doors', {
-          hit: event.object,
-          dragPx,
-          reason: 'двери закрыты → открываем',
-          hitInfo,
-        })
-      }
-
-      toggleDoors()
-    },
-    [doorsOpen, animating, toggleDoors, handleDrawerClick, dragThresholdPx, model, controls],
-  )
+  // Пока двери открыты — двери не ловят raycast (ящики доступны стабильно)
+  useEffect(() => {
+    if (animating) return
+    setDoorRaycastEnabled(model, !doorsOpen)
+    russoLog('info', 'doors', doorsOpen ? 'raycast дверей OFF (ящики приоритет)' : 'raycast дверей ON')
+  }, [doorsOpen, animating, model])
 
   const handlePointerOver = useCallback(
     (event) => {
       event.stopPropagation()
-      const { animating, activeDrawerId } = useShkafStore.getState()
-      if (!doorsOpen || animating || activeDrawerId) return
+      const { animating: busy, activeDrawerId: activeId } = useShkafStore.getState()
+      if (!doorsOpen || busy || activeId) return
 
-      const drawerSection = findDrawerSectionFromHit(event.object)
-      if (drawerSection) {
-        applyDrawerHover(drawerSection.id)
+      const drawerHit = findDrawerFromIntersections(event.intersections, model)
+      if (drawerHit) {
+        applyDrawerHover(drawerHit.section.id)
       } else {
         clearDrawerHover()
       }
     },
-    [doorsOpen, applyDrawerHover, clearDrawerHover],
+    [doorsOpen, applyDrawerHover, clearDrawerHover, model],
   )
 
   // Подсветка с потолка шкафа — мягкий верхний акцент
@@ -1209,8 +1273,8 @@ function Shkaf({ sceneScale = 1 }) {
       <primitive
         object={model}
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onClick={handleClick}
         onPointerOver={handlePointerOver}
       />
 

@@ -61,14 +61,12 @@ export function findDrawerNodeFromHit(object) {
   const sectionId = findSectionIdFromHit(object)
   if (!sectionId) return null
 
-  // подняться до самой ноды ящика в дереве
   let current = object
   while (current) {
     if (current.name === SHKAF_NODE_MAP[sectionId]) return current
     current = current.parent
   }
 
-  // tabl/плашка привязаны к ящику как дети — найти родителя-ящик
   current = object
   while (current) {
     if (DRAWER_NODE_NAMES.has(current.name)) return current
@@ -90,6 +88,40 @@ export function findDrawerSectionFromHit(object) {
   const sectionId = findSectionIdFromHit(object)
   if (!sectionId) return null
   return drawerSections.find((s) => s.id === sectionId) ?? null
+}
+
+/**
+ * Ищем ящик по ВСЕМ пересечениям луча (не только event.object).
+ * Открытая дверь/ручка часто первая в списке — без этого клик «то работает, то нет».
+ */
+export function findDrawerFromIntersections(intersections, model) {
+  if (!intersections?.length) return null
+
+  for (const hit of intersections) {
+    const object = hit?.object
+    if (!object) continue
+    if (isUnderInactiveDrawerNode(object)) continue
+
+    const section = findDrawerSectionFromHit(object)
+    if (!section) continue
+
+    const node =
+      findDrawerNodeFromHit(object) ??
+      model?.getObjectByName?.(SHKAF_NODE_MAP[section.id]) ??
+      null
+
+    if (!node) continue
+
+    return {
+      section,
+      node,
+      object,
+      distance: hit.distance,
+      firstHitName: intersections[0]?.object?.name ?? null,
+    }
+  }
+
+  return null
 }
 
 /** Имя корпуса (.1) по крышке */
