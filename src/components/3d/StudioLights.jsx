@@ -9,7 +9,7 @@ function AimedRectAreaLight({ aimAt, rotation, position, layers, bothLayers, ...
   const ref = useRef(null)
   const target = useMemo(
     () => (aimAt ? new THREE.Vector3(...aimAt) : DEFAULT_AIM),
-    [aimAt?.[0], aimAt?.[1], aimAt?.[2]],
+    [aimAt],
   )
 
   useLayoutEffect(() => {

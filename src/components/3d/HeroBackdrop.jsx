@@ -71,7 +71,10 @@ function LightboxPanel() {
 function FillAreaLight() {
   const { fillLight } = HERO
   const ref = useRef(null)
-  const target = useMemo(() => new THREE.Vector3(...fillLight.aimAt), [])
+  const target = useMemo(
+    () => new THREE.Vector3(...fillLight.aimAt),
+    [fillLight.aimAt],
+  )
 
   useLayoutEffect(() => {
     const light = ref.current
@@ -122,7 +125,7 @@ function DoorRimLight({ config }) {
   const ref = useRef(null)
   const target = useMemo(
     () => new THREE.Vector3(...config.aimAt),
-    [config.aimAt[0], config.aimAt[1], config.aimAt[2]],
+    [config.aimAt],
   )
 
   useLayoutEffect(() => {
