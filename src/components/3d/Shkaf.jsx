@@ -705,6 +705,9 @@ function Shkaf({ sceneScale = 1 }) {
   const hoverTweens = useRef([])
   const meshMaterialBackup = useRef(new Map())
   const drawerBasePositions = useRef(new Map())
+  const doorTimelineRef = useRef(null)
+  const drawerTimelineRef = useRef(null)
+  const navTimerRef = useRef(null)
   const navigate = useNavigate()
 
   const { doorsOpen, animating, activeDrawerId, setDoorsOpen, setAnimating, setActiveDrawerId } =
@@ -843,14 +846,17 @@ function Shkaf({ sceneScale = 1 }) {
       const axis = DOOR_ROTATION_AXIS
       setInnerDoorBackfacesVisible(model, open)
 
+      doorTimelineRef.current?.kill()
       const tl = gsap.timeline({
         onComplete: () => {
+          doorTimelineRef.current = null
           if (!open) setInnerDoorBackfacesVisible(model, false)
           setDoorsOpen(open)
           setAnimating(false)
           russoLog('info', 'doors', open ? 'двери открыты' : 'двери закрыты')
         },
       })
+      doorTimelineRef.current = tl
 
       if (left) {
         tl.to(
@@ -898,6 +904,11 @@ function Shkaf({ sceneScale = 1 }) {
 
   const restoreMeshMaterials = useCallback(() => {
     meshMaterialBackup.current.forEach((original, mesh) => {
+      const originals = new Set(Array.isArray(original) ? original : [original])
+      const current = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      current.forEach((material) => {
+        if (material && !originals.has(material)) material.dispose?.()
+      })
       mesh.material = original
     })
     meshMaterialBackup.current.clear()
@@ -1009,15 +1020,20 @@ function Shkaf({ sceneScale = 1 }) {
         ease: 'power2.out',
       })
 
+      drawerTimelineRef.current?.kill()
+      if (navTimerRef.current) clearTimeout(navTimerRef.current)
       const tl = gsap.timeline({
         onComplete: () => {
-          setTimeout(() => {
+          drawerTimelineRef.current = null
+          navTimerRef.current = setTimeout(() => {
+            navTimerRef.current = null
             setAnimating(false)
             russoLog('info', 'nav', `navigate ${section.route}`)
             navigate(section.route)
           }, NAVIGATE_DELAY_MS)
         },
       })
+      drawerTimelineRef.current = tl
 
       tl.to(target.position, animateNode(target), 0)
 
@@ -1027,6 +1043,18 @@ function Shkaf({ sceneScale = 1 }) {
       if (paired) tl.to(paired.position, animateNode(paired), 0)
     },
     [model, navigate, setAnimating, setActiveDrawerId, clearDrawerHover],
+  )
+
+  useEffect(
+    () => () => {
+      doorTimelineRef.current?.kill()
+      drawerTimelineRef.current?.kill()
+      if (navTimerRef.current) clearTimeout(navTimerRef.current)
+      hoverTweens.current.forEach((tween) => tween.kill())
+      restoreMeshMaterials()
+      document.body.style.cursor = 'auto'
+    },
+    [restoreMeshMaterials],
   )
 
   const processTapFromHits = useCallback(

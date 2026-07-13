@@ -76,14 +76,24 @@ function handleCanvasCreated({ gl, scene }) {
   gl.shadowMap.type = THREE.PCFSoftShadowMap
   scene.background = new THREE.Color(bg)
   russoCanvasReady()
+}
 
-  const canvas = gl.domElement
-  canvas.addEventListener('webglcontextlost', (e) => {
-    e.preventDefault()
-    russoLog('error', 'scene', 'WebGL context lost — закрой вкладку и открой заново')
-    window.dispatchEvent(new CustomEvent('russo:webgl-lost'))
-  })
-  // авто-reload при restored → бесконечный цикл на тяжёлой сцене
+function WebGLContextMonitor() {
+  const gl = useThree((s) => s.gl)
+
+  useEffect(() => {
+    const canvas = gl.domElement
+    const onContextLost = (event) => {
+      event.preventDefault()
+      russoLog('error', 'scene', 'WebGL context lost — закрой вкладку и открой заново')
+      window.dispatchEvent(new CustomEvent('russo:webgl-lost'))
+    }
+
+    canvas.addEventListener('webglcontextlost', onContextLost)
+    return () => canvas.removeEventListener('webglcontextlost', onContextLost)
+  }, [gl])
+
+  return null
 }
 
 function WebGLFallback() {
@@ -344,6 +354,7 @@ export default function Scene() {
       >
         <color attach="background" args={[canvasBg]} />
         <GlProfile perf={perf} />
+        <WebGLContextMonitor />
 
         <PerspectiveCamera
           makeDefault
