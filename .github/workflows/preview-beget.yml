@@ -1,18 +1,23 @@
 name: Preview on Beget VPS
 
 on:
-  push:
-    branches:
-      - 'cursor/**'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-beget-preview
+  cancel-in-progress: true
 
 jobs:
   preview:
     runs-on: ubuntu-latest
+    environment: preview
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -21,47 +26,50 @@ jobs:
         env:
           BEGET_HOST: ${{ secrets.BEGET_HOST }}
           BEGET_USER: ${{ secrets.BEGET_USER }}
-          BEGET_PASSWORD: ${{ secrets.BEGET_PASSWORD }}
+          BEGET_SSH_KEY: ${{ secrets.BEGET_SSH_KEY }}
+          BEGET_KNOWN_HOSTS: ${{ secrets.BEGET_KNOWN_HOSTS }}
         run: |
           test -n "$BEGET_HOST" || { echo "::error::Secret BEGET_HOST не задан"; exit 1; }
           test -n "$BEGET_USER" || { echo "::error::Secret BEGET_USER не задан"; exit 1; }
-          test -n "$BEGET_PASSWORD" || { echo "::error::Secret BEGET_PASSWORD не задан"; exit 1; }
+          test -n "$BEGET_SSH_KEY" || { echo "::error::Secret BEGET_SSH_KEY не задан"; exit 1; }
+          test -n "$BEGET_KNOWN_HOSTS" || { echo "::error::Secret BEGET_KNOWN_HOSTS не задан"; exit 1; }
 
       - run: npm ci
+      - run: npm run lint
+      - run: npm test
       - run: npm run build
 
-      - name: Install deploy tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync openssh-client
+      - name: Configure pinned SSH identity
+        env:
+          BEGET_SSH_KEY: ${{ secrets.BEGET_SSH_KEY }}
+          BEGET_KNOWN_HOSTS: ${{ secrets.BEGET_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$BEGET_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$BEGET_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Upload preview to VPS
         env:
           BEGET_HOST: ${{ secrets.BEGET_HOST }}
           BEGET_USER: ${{ secrets.BEGET_USER }}
-          BEGET_PASSWORD: ${{ secrets.BEGET_PASSWORD }}
         run: |
-          sshpass -p "$BEGET_PASSWORD" ssh \
-            -o StrictHostKeyChecking=no \
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=20 \
-            -o PreferredAuthentications=password \
-            -o PubkeyAuthentication=no \
             "${BEGET_USER}@${BEGET_HOST}" \
             "mkdir -p /var/www/russo-preview"
 
-          sshpass -p "$BEGET_PASSWORD" rsync -avz --delete \
-            -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o PreferredAuthentications=password -o PubkeyAuthentication=no" \
+          rsync -avz --delete \
+            --exclude 'models/shkaf_full.glb' \
+            -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20" \
             dist/ "${BEGET_USER}@${BEGET_HOST}:/var/www/russo-preview/"
 
-      - name: Fix permissions on VPS
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.BEGET_HOST }}
-          username: ${{ secrets.BEGET_USER }}
-          password: ${{ secrets.BEGET_PASSWORD }}
-          port: 22
-          timeout: 30s
-          script: |
-            chown -R www-data:www-data /var/www/russo-preview
-            rm -f /var/www/russo-preview/models/shkaf_full.glb
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "${BEGET_USER}@${BEGET_HOST}" \
+            "test -s /var/www/russo-preview/index.html && chmod -R a+rX /var/www/russo-preview"
 
       - name: Preview URL hint
         run: |
