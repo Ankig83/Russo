@@ -9,7 +9,8 @@ export const RUSSO_BUILD = '2026-07-13-p0-fixes'
 const listeners = new Set()
 
 function isHudEnabled() {
-  if (!import.meta.env.DEV && import.meta.env.VITE_SUPPORT_DIAGNOSTICS !== 'true') {
+  const env = import.meta.env ?? {}
+  if (!env.DEV && env.VITE_SUPPORT_DIAGNOSTICS !== 'true') {
     return false
   }
   try {
