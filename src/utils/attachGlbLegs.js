@@ -6,11 +6,20 @@ import {
 } from '../constants/shkafNodes'
 import { findByName } from './cabinetBounds'
 
-/** Материалы корпуса — без patina_PBR (alpha на тонкой геометрии ножек даёт «дыры») */
+/** Карты корпуса дают ножкам мелкую фактуру, но цвет настраивается как отдельная латунь. */
 const LEG_MATERIAL_REFERENCE_ORDER = [
   'Scratched copper metal',
   'Material.002',
 ]
+
+const AGED_BRASS = {
+  color: '#b89a55',
+  metalness: 0.9,
+  roughness: 0.42,
+  envMapIntensity: 0.72,
+  clearcoat: 0.04,
+  clearcoatRoughness: 0.58,
+}
 
 function findCabinetReferenceMaterial(shkafRoot) {
   for (const materialName of LEG_MATERIAL_REFERENCE_ORDER) {
@@ -26,20 +35,47 @@ function findCabinetReferenceMaterial(shkafRoot) {
   return null
 }
 
-/** Ножки — непрозрачный клон без alpha-карт (тонкие полигоны иначе «пропадают») */
+/**
+ * Состаренная латунь как в референсе:
+ * тёплый золотисто-оливковый тон + roughness/normal фактура корпуса.
+ * Alpha намеренно отключена — тонкая геометрия ножек остаётся целой.
+ */
 function prepareLegMaterial(reference) {
-  const mat = reference.clone()
-  mat.transparent = false
-  mat.opacity = 1
-  mat.alphaTest = 0
-  mat.alphaMap = null
-  mat.depthWrite = true
-  mat.side = THREE.DoubleSide
-  mat.needsUpdate = true
-  return mat
+  const material = new THREE.MeshPhysicalMaterial({
+    name: 'M_AgedBrass_Legs',
+    color: AGED_BRASS.color,
+    metalness: AGED_BRASS.metalness,
+    roughness: AGED_BRASS.roughness,
+    envMapIntensity: AGED_BRASS.envMapIntensity,
+    clearcoat: AGED_BRASS.clearcoat,
+    clearcoatRoughness: AGED_BRASS.clearcoatRoughness,
+    side: THREE.DoubleSide,
+    transparent: false,
+    opacity: 1,
+    alphaTest: 0,
+    depthWrite: true,
+  })
+
+  // Цветовая карта добавляет естественную неоднородность и потемнение патины.
+  material.map = reference.map ?? null
+  material.roughnessMap = reference.roughnessMap ?? null
+  material.normalMap = reference.normalMap ?? null
+  material.aoMap = reference.aoMap ?? null
+  material.bumpMap = reference.bumpMap ?? null
+  material.alphaMap = null
+
+  if (reference.normalScale && material.normalMap) {
+    material.normalScale.copy(reference.normalScale).multiplyScalar(0.35)
+  }
+  if (reference.bumpScale != null && material.bumpMap) {
+    material.bumpScale = Math.min(Math.abs(reference.bumpScale), 0.08)
+  }
+
+  material.needsUpdate = true
+  return material
 }
 
-/** Клонирует материал корпуса на mesh-ножки (текстура как у шкафа) */
+/** Применяет состаренную латунь ко всем mesh ножек. */
 export function syncLegMaterialsFromCabinet(model) {
   const shkafRoot = findByName(model, SHKAF_ROOT_NAME)
   if (!shkafRoot) return false
