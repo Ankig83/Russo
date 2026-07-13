@@ -705,6 +705,11 @@ function Shkaf({ sceneScale = 1 }) {
   const controls = useThree((s) => s.controls)
   const isMobile = useIsMobile()
   const dragThresholdPx = isMobile ? DRAG_THRESHOLD_MOBILE_PX : DRAG_THRESHOLD_DESKTOP_PX
+
+  // На случай если предыдущий жест оставил controls.enabled = false
+  useEffect(() => {
+    if (controls) controls.enabled = true
+  }, [controls])
   const rootRef = useRef()
   const leftDoorRef = useRef()
   const rightDoorRef = useRef()
@@ -1039,16 +1044,8 @@ function Shkaf({ sceneScale = 1 }) {
     [model, navigate, setAnimating, setActiveDrawerId, clearDrawerHover],
   )
 
-  const orbitBlocked = useRef(false)
   const pointerDownAt = useRef(0)
-  const dragStarted = useRef(false)
   const tapHandled = useRef(false)
-
-  const releaseOrbit = useCallback(() => {
-    if (!orbitBlocked.current) return
-    orbitBlocked.current = false
-    if (controls) controls.enabled = true
-  }, [controls])
 
   const processTap = useCallback(
     (event) => {
@@ -1121,63 +1118,39 @@ function Shkaf({ sceneScale = 1 }) {
     [model, handleDrawerClick, toggleDoors],
   )
 
-  const handlePointerDown = useCallback(
-    (event) => {
-      pointerDownPos.current = { x: event.clientX, y: event.clientY }
-      pointerDownAt.current = performance.now()
-      dragStarted.current = false
-      tapHandled.current = false
-
-      // ПКМ / колесо — orbit (pan/zoom), не тап
-      if (event.pointerType !== 'touch' && event.button !== 0) return
-
-      // Блокируем orbit до явного drag — иначе тап по ящику срывается
-      event.stopPropagation()
-      orbitBlocked.current = true
-      if (controls) controls.enabled = false
-    },
-    [controls],
-  )
-
-  const handlePointerMove = useCallback(
-    (event) => {
-      if (!orbitBlocked.current || dragStarted.current) return
-      const dx = event.clientX - pointerDownPos.current.x
-      const dy = event.clientY - pointerDownPos.current.y
-      if (Math.sqrt(dx * dx + dy * dy) <= dragThresholdPx) return
-
-      dragStarted.current = true
-      releaseOrbit()
-      russoLog('info', 'click', `drag ≥${dragThresholdPx}px — orbit снова включён`)
-    },
-    [dragThresholdPx, releaseOrbit],
-  )
+  // OrbitControls всегда включены. Тап = короткий жест без большого сдвига.
+  const handlePointerDown = useCallback((event) => {
+    if (event.pointerType !== 'touch' && event.button !== 0) return
+    pointerDownPos.current = { x: event.clientX, y: event.clientY }
+    pointerDownAt.current = performance.now()
+    tapHandled.current = false
+  }, [])
 
   const handlePointerUp = useCallback(
     (event) => {
+      if (event.pointerType !== 'touch' && event.button !== 0) return
+      if (tapHandled.current) return
+
       const elapsed = performance.now() - pointerDownAt.current
-      const wasDrag = dragStarted.current
-      releaseOrbit()
-
-      if (wasDrag || tapHandled.current) return
-      if (elapsed > TAP_MAX_MS) {
-        russoClick('ignore-drag', {
-          hit: event.object,
-          dragPx: null,
-          reason: `удержание ${Math.round(elapsed)}ms > ${TAP_MAX_MS}ms`,
-        })
-        return
-      }
-
       const dx = event.clientX - pointerDownPos.current.x
       const dy = event.clientY - pointerDownPos.current.y
       const dragPx = Math.sqrt(dx * dx + dy * dy)
+
+      // Вращение / pan / зум — не трогаем, только отсекаем от тапа
       if (dragPx > dragThresholdPx) {
         russoClick('ignore-drag', {
           hit: event.object,
           dragPx: Math.round(dragPx),
           threshold: dragThresholdPx,
-          reason: `сдвиг ${Math.round(dragPx)}px > порога`,
+          reason: `сдвиг ${Math.round(dragPx)}px — это камера, не тап`,
+        })
+        return
+      }
+      if (elapsed > TAP_MAX_MS) {
+        russoClick('ignore-drag', {
+          hit: event.object,
+          dragPx: Math.round(dragPx),
+          reason: `удержание ${Math.round(elapsed)}ms — не тап`,
         })
         return
       }
@@ -1186,19 +1159,8 @@ function Shkaf({ sceneScale = 1 }) {
       event.stopPropagation()
       processTap(event)
     },
-    [releaseOrbit, dragThresholdPx, processTap],
+    [dragThresholdPx, processTap],
   )
-
-  useEffect(() => {
-    window.addEventListener('pointerup', releaseOrbit)
-    window.addEventListener('pointercancel', releaseOrbit)
-    window.addEventListener('blur', releaseOrbit)
-    return () => {
-      window.removeEventListener('pointerup', releaseOrbit)
-      window.removeEventListener('pointercancel', releaseOrbit)
-      window.removeEventListener('blur', releaseOrbit)
-    }
-  }, [releaseOrbit])
 
   // Пока двери открыты — двери не ловят raycast (ящики доступны стабильно)
   useEffect(() => {
@@ -1273,7 +1235,6 @@ function Shkaf({ sceneScale = 1 }) {
       <primitive
         object={model}
         onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerOver={handlePointerOver}
       />
