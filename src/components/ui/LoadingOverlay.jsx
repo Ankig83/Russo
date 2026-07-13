@@ -6,6 +6,7 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 
 const MIN_SHOW_MS = 7500
 const MIN_SHOW_MS_MOBILE = 6000
+const assetBase = import.meta.env.BASE_URL
 
 function safeInset(side) {
   if (typeof window === 'undefined') return 0
@@ -179,7 +180,7 @@ export default function LoadingOverlay() {
           filter: 'drop-shadow(0 14px 28px rgba(0,0,0,0.95)) drop-shadow(0 4px 8px rgba(180,100,0,0.45))',
         }}>
           <img
-            src="/assets/russo-mark.svg"
+            src={`${assetBase}assets/russo-mark.svg`}
             alt=""
             width={logoSize}
             height={logoSize}
