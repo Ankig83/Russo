@@ -494,8 +494,8 @@ export const STUDIO_CAMERA_START_DISTANCE = getStudioCameraStartDistance(STUDIO.
 export const STUDIO_MOBILE = {
   camera: {
     fov: 32,
-    position: [-0.72, 0.52, 3.35],
-    target: [0, 0.98, 0],
+    position: [-0.72, 0.48, 3.35],
+    target: [0, 0.81, 0],
   },
   orbit: {
     minAzimuth: -0.46,
