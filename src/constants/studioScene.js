@@ -488,13 +488,14 @@ export const STUDIO_CAMERA_START_DISTANCE = getStudioCameraStartDistance(STUDIO.
 
 /**
  * Hero-кадр на мобильных (<768px) — отдельно от десктопа.
- * Старт: низкий угол, 3/4 (видна правая сторона), шкаф целиком в портретном кадре.
+ * Старт: крупный план шкафа (3/4), логотип на лайтбоксе за кадром.
+ * Отдаление двумя пальцами открывает лайтбокс и знак РУССО.
  */
 export const STUDIO_MOBILE = {
   camera: {
-    fov: 36,
-    position: [-1.2, 0.94, 5.5],
-    target: [0, 1.16, 0],
+    fov: 32,
+    position: [-0.7, 1.04, 3.22],
+    target: [0, 1.28, 0],
   },
   orbit: {
     minAzimuth: -0.46,
