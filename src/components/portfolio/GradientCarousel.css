@@ -51,6 +51,14 @@
   width: min(26vw, 360px);
   aspect-ratio: 4 / 5;
   isolation: isolate;
+  border: 1px solid rgba(226, 180, 111, 0.22);
+  border-radius: 18px;
+  background: linear-gradient(145deg, #3a2a1e, #0b0908);
+  box-shadow:
+    14px 18px 0 -8px rgba(57, 37, 22, 0.78),
+    22px 32px 70px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 231, 192, 0.12);
+  cursor: zoom-in;
   transform-style: preserve-3d;
   backface-visibility: hidden;
   will-change: transform, filter;
@@ -58,8 +66,34 @@
   contain: layout paint;
 }
 
+.gcar-card::before {
+  content: '';
+  position: absolute;
+  inset: 8px -8px -10px 8px;
+  z-index: -1;
+  border: 1px solid rgba(211, 155, 82, 0.16);
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(95, 61, 33, 0.72), rgba(5, 5, 5, 0.88));
+  transform: translateZ(-22px);
+}
+
+.gcar-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  background: linear-gradient(115deg, rgba(255, 231, 190, 0.13), transparent 24%, transparent 72%, rgba(0, 0, 0, 0.24));
+  pointer-events: none;
+}
+
+.gcar-card:focus-visible {
+  outline: 2px solid rgba(225, 172, 98, 0.85);
+  outline-offset: 5px;
+}
+
 .gcar-card__img {
-  border-radius: 14px;
+  border-radius: 17px;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -68,7 +102,9 @@
   pointer-events: none;
   -webkit-user-drag: none;
   user-select: none;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 6px 16px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 24px 60px rgba(0, 0, 0, 0.55);
 }
 
 @media (max-width: 767px) {

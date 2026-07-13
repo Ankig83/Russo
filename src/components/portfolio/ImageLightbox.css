@@ -1,0 +1,99 @@
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding:
+    max(4rem, calc(2rem + var(--safe-top)))
+    max(1rem, var(--safe-right))
+    max(2rem, calc(1rem + var(--safe-bottom)))
+    max(1rem, var(--safe-left));
+  background: rgba(4, 3, 2, 0.96);
+  backdrop-filter: blur(22px);
+  animation: lightbox-in 280ms ease-out;
+}
+
+.image-lightbox::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(145, 91, 38, 0.12), transparent 55%);
+  pointer-events: none;
+}
+
+.image-lightbox img {
+  position: relative;
+  z-index: 1;
+  width: auto;
+  max-width: min(92vw, 1500px);
+  height: auto;
+  max-height: calc(100dvh - 7rem);
+  object-fit: contain;
+  border: 1px solid rgba(231, 190, 125, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.72);
+}
+
+.image-lightbox__top {
+  position: absolute;
+  top: max(1rem, var(--safe-top));
+  right: max(1rem, var(--safe-right));
+  left: max(1rem, var(--safe-left));
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.image-lightbox__top button {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid rgba(225, 178, 112, 0.24);
+  border-radius: 999px;
+  color: #ead1ad;
+  cursor: pointer;
+  background: rgba(20, 15, 11, 0.7);
+}
+
+.image-lightbox__arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid rgba(225, 178, 112, 0.22);
+  border-radius: 50%;
+  color: #f2dfc3;
+  background: rgba(12, 9, 7, 0.58);
+  font-size: 32px;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.image-lightbox__arrow--left { left: max(1rem, var(--safe-left)); }
+.image-lightbox__arrow--right { right: max(1rem, var(--safe-right)); }
+
+@keyframes lightbox-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 767px) {
+  .image-lightbox__arrow {
+    top: auto;
+    bottom: max(1rem, var(--safe-bottom));
+    width: 44px;
+    height: 44px;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-lightbox { animation: none; }
+}

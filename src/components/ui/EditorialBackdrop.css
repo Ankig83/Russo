@@ -1,0 +1,89 @@
+.editorial-page {
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: #f4eee5;
+  background: #090806;
+}
+
+.editorial-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 20%, rgba(77, 55, 33, 0.22), transparent 43%),
+    radial-gradient(ellipse at 12% 80%, rgba(73, 37, 20, 0.16), transparent 42%),
+    radial-gradient(ellipse at 90% 65%, rgba(98, 64, 29, 0.11), transparent 38%),
+    linear-gradient(145deg, #171411 0%, #090807 42%, #12100d 100%);
+}
+
+.editorial-backdrop::before,
+.editorial-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: -20%;
+}
+
+.editorial-backdrop::before {
+  opacity: 0.42;
+  background:
+    repeating-radial-gradient(
+      ellipse at 30% 40%,
+      transparent 0 6px,
+      rgba(255, 233, 195, 0.018) 7px,
+      transparent 9px 17px
+    ),
+    repeating-linear-gradient(
+      117deg,
+      transparent 0 23px,
+      rgba(255, 255, 255, 0.018) 24px,
+      transparent 26px 49px
+    );
+  filter: blur(0.45px);
+  transform: rotate(-4deg) scale(1.1);
+}
+
+.editorial-backdrop::after {
+  box-shadow: inset 0 0 22vw rgba(0, 0, 0, 0.88);
+}
+
+.editorial-backdrop__grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.2;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.025) 0 1px, transparent 1px 4px);
+  mix-blend-mode: soft-light;
+}
+
+.editorial-backdrop__glow {
+  position: absolute;
+  top: -30%;
+  left: 50%;
+  width: min(80vw, 900px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(184, 119, 48, 0.09);
+  filter: blur(110px);
+  transform: translateX(-50%);
+}
+
+.editorial-panel {
+  border: 1px solid rgba(229, 184, 111, 0.16);
+  background: linear-gradient(145deg, rgba(37, 31, 25, 0.78), rgba(11, 10, 9, 0.72));
+  box-shadow:
+    0 30px 70px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 235, 196, 0.06);
+  backdrop-filter: blur(14px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editorial-backdrop__glow {
+    filter: blur(80px);
+  }
+}

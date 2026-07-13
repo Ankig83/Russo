@@ -1,6 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import GradientCarousel from './GradientCarousel'
+import ImageLightbox from './ImageLightbox'
+import EditorialBackdrop from '../ui/EditorialBackdrop'
 import { getCategory, getProject } from '../../constants/portfolioProjects'
 
 /** Страница проекта: полноэкранная градиент-карусель фото + оверлей с описанием */
@@ -8,6 +10,7 @@ export default function ProjectCarouselPage({ category }) {
   const { slug } = useParams()
   const meta = getCategory(category)
   const project = getProject(category, slug)
+  const [lightboxIndex, setLightboxIndex] = useState(null)
 
   useEffect(() => {
     if (project) document.title = `${project.title} — Руссо`
@@ -18,7 +21,8 @@ export default function ProjectCarouselPage({ category }) {
 
   if (!project) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center bg-[#0b0b0b] px-6 text-center text-white">
+      <div className="editorial-page flex min-h-dvh flex-col items-center justify-center px-6 text-center">
+        <EditorialBackdrop />
         <h1 className="mb-4 text-2xl font-semibold">Проект не найден</h1>
         <Link
           to={meta?.route ?? '/'}
@@ -32,7 +36,10 @@ export default function ProjectCarouselPage({ category }) {
 
   return (
     <div className="relative h-dvh w-screen overflow-hidden bg-[#060606]">
-      <GradientCarousel images={project.images} />
+      <GradientCarousel
+        images={project.images}
+        onImageClick={setLightboxIndex}
+      />
 
       {/* Верхний оверлей: назад + название */}
       <div
@@ -60,9 +67,19 @@ export default function ProjectCarouselPage({ category }) {
           {project.year ? ` · ${project.year}` : ''}
         </p>
         <p className="mt-3 hidden max-w-xl text-xs text-white/40 md:block">
-          Потяните или прокрутите, чтобы листать фото
+          Потяните, чтобы листать · нажмите на фото, чтобы открыть
         </p>
       </div>
+
+      {lightboxIndex != null && (
+        <ImageLightbox
+          images={project.images}
+          index={lightboxIndex}
+          title={project.title}
+          onChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </div>
   )
 }

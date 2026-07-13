@@ -185,7 +185,7 @@ function extractColors(img, idx) {
   }
 }
 
-export default function GradientCarousel({ images }) {
+export default function GradientCarousel({ images, onImageClick }) {
   const isMobile = useIsMobile()
   const stageRef = useRef(null)
   const cardsRef = useRef(null)
@@ -228,7 +228,17 @@ export default function GradientCarousel({ images }) {
       images.forEach((src, i) => {
         const card = document.createElement('article')
         card.className = 'gcar-card'
+        card.dataset.index = String(i)
+        card.tabIndex = 0
+        card.setAttribute('role', 'button')
+        card.setAttribute('aria-label', `Открыть фотографию ${i + 1}`)
         card.style.willChange = 'transform'
+        card.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onImageClick?.(i)
+          }
+        })
         const img = new Image()
         img.className = 'gcar-card__img'
         img.decoding = 'async'
@@ -429,12 +439,16 @@ export default function GradientCarousel({ images }) {
     let lastX = 0
     let lastT = 0
     let lastDelta = 0
+    let dragStartX = 0
+    let moved = false
 
     const onPointerDown = (e) => {
       dragging = true
       lastX = e.clientX
+      dragStartX = e.clientX
       lastT = performance.now()
       lastDelta = 0
+      moved = false
       try {
         stage.setPointerCapture(e.pointerId)
       } catch {
@@ -446,6 +460,7 @@ export default function GradientCarousel({ images }) {
       if (!dragging) return
       const now = performance.now()
       const dx = e.clientX - lastX
+      if (Math.abs(e.clientX - dragStartX) > 8) moved = true
       const dt = Math.max(1, now - lastT) / 1000
       SCROLL_X = mod(SCROLL_X - dx * DRAG_SENS, TRACK)
       lastDelta = dx / dt
@@ -462,6 +477,13 @@ export default function GradientCarousel({ images }) {
       }
       vX = -lastDelta * DRAG_SENS
       stage.classList.remove('gcar-dragging')
+
+      if (!moved) {
+        const element = document.elementFromPoint(e.clientX, e.clientY)
+        const card = element?.closest?.('.gcar-card')
+        const index = Number(card?.dataset?.index)
+        if (Number.isInteger(index)) onImageClick?.(index)
+      }
     }
 
     let resizeTimer = null
@@ -547,7 +569,7 @@ export default function GradientCarousel({ images }) {
       document.removeEventListener('visibilitychange', onVisibility)
       cardsRoot.innerHTML = ''
     }
-  }, [images, isMobile])
+  }, [images, isMobile, onImageClick])
 
   return (
     <div ref={stageRef} className="gcar-stage">
