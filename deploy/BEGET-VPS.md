@@ -14,9 +14,11 @@
 |--------|----------|
 | `BEGET_HOST` | `93.189.229.230` |
 | `BEGET_USER` | `root` |
-| `BEGET_PASSWORD` | пароль root от VPS |
+| `BEGET_PASSWORD` | пароль root от VPS (символы `!&` и т.п. — ок, вставлять как есть) |
 
-SSH-ключ **не нужен** — только логин и пароль.
+SSH-ключ **не нужен**. Старые секреты `BEGET_SSH_KEY` / `BEGET_KNOWN_HOSTS` можно удалить.
+
+**Куда:** [github.com/Ankig83/Russo/settings/secrets/actions](https://github.com/Ankig83/Russo/settings/secrets/actions)
 
 ---
 
@@ -76,6 +78,8 @@ ufw status
 | `BEGET_HOST` | `93.189.229.230` |
 | `BEGET_USER` | `root` |
 | `BEGET_PASSWORD` | пароль root от VPS |
+
+Старые `BEGET_SSH_KEY` / `BEGET_KNOWN_HOSTS` — не используются, можно удалить.
 
 ---
 

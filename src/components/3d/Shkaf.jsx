@@ -199,42 +199,26 @@ function setInnerDoorBackfacesVisible(model, visible) {
   })
 }
 
-function getObjectBoxInDoorLocal(door, object) {
-  door.updateWorldMatrix(true, false)
-  object.updateWorldMatrix(true, false)
-
-  const worldBox = new THREE.Box3().setFromObject(object)
-  const localBox = new THREE.Box3()
-  const points = [
-    [worldBox.min.x, worldBox.min.y, worldBox.min.z],
-    [worldBox.min.x, worldBox.min.y, worldBox.max.z],
-    [worldBox.min.x, worldBox.max.y, worldBox.min.z],
-    [worldBox.min.x, worldBox.max.y, worldBox.max.z],
-    [worldBox.max.x, worldBox.min.y, worldBox.min.z],
-    [worldBox.max.x, worldBox.min.y, worldBox.max.z],
-    [worldBox.max.x, worldBox.max.y, worldBox.min.z],
-    [worldBox.max.x, worldBox.max.y, worldBox.max.z],
-  ]
-
-  points.forEach(([x, y, z]) => {
-    localBox.expandByPoint(door.worldToLocal(new THREE.Vector3(x, y, z)))
-  })
-
-  return localBox
-}
-
 function findDoorRing(_model, door, side) {
   if (!door) return null
+
+  const preferred = side === 'left'
+    ? ['BézierCircle', 'Circle.001', 'Circle']
+    : ['Circle.002', 'Circle']
+
+  for (const name of preferred) {
+    const node = door.getObjectByName(name)
+    if (node?.isMesh) return node
+  }
 
   let best = null
   let bestCount = 0
   door.traverse((child) => {
     if (!child.isMesh) return
     const name = (child.name ?? '').normalize('NFC')
-    const match = side === 'left'
-      ? /001$/i.test(name) && /circle/i.test(name)
-      : /circle/i.test(name) && !/001/i.test(name)
-    if (!match) return
+    if (!/circle|bezier/i.test(name)) return
+    if (side === 'left' && /002$/i.test(name)) return
+    if (side === 'right' && /001$/i.test(name) && !/002$/i.test(name)) return
     const count = child.geometry?.getAttribute('position')?.count ?? 0
     if (count > bestCount) {
       best = child
@@ -244,8 +228,6 @@ function findDoorRing(_model, door, side) {
 
   return best
 }
-
-const _ringPoint = new THREE.Vector3()
 
 function removeMedallionRivets(root) {
   if (!root) return
@@ -283,19 +265,57 @@ function getRingGeometryBox(ring) {
   return box
 }
 
-function sampleMedallionArcPositions(door, side, count, radiusScale = 1) {
-  const beresta = door.getObjectByName(side === 'left' ? 'Beresta_L' : 'Beresta_R')
-  const ring = findDoorRing(null, door, side)
-  if (!beresta?.isMesh) return []
+const _ringFaceOffset = new THREE.Vector3()
+const _ringCenterLocal = new THREE.Vector3()
+const _ringWorldPos = new THREE.Vector3()
+const _ringDoorPos = new THREE.Vector3()
 
-  const berestaBox = getObjectBoxInDoorLocal(door, beresta)
-  const ringBox = ring?.isMesh ? getObjectBoxInDoorLocal(door, ring) : berestaBox
+function isAngleOnDoorSemicircle(angle, side) {
+  const a = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
+  if (side === 'left') return a >= Math.PI / 2 - 0.12 && a <= (Math.PI * 3) / 2 + 0.12
+  return a <= Math.PI / 2 + 0.12 || a >= (Math.PI * 3) / 2 - 0.12
+}
 
-  const center = berestaBox.getCenter(new THREE.Vector3())
-  center.x = side === 'left' ? berestaBox.max.x : berestaBox.min.x
-  const outerX = side === 'left' ? berestaBox.min.x : berestaBox.max.x
-  const radius = Math.abs(outerX - center.x) * radiusScale
-  const z = ringBox.max.z + 0.004
+function isPointOnOuterRim(ringBox, point, plane, side) {
+  const { normalAxis, axisA, axisB } = plane
+
+  if (
+    point[normalAxis] < ringBox.min[normalAxis] - 0.001
+    || point[normalAxis] > ringBox.max[normalAxis] + 0.006
+  ) {
+    return false
+  }
+
+  const centerA = (ringBox.min[axisA] + ringBox.max[axisA]) * 0.5
+  const centerB = (ringBox.min[axisB] + ringBox.max[axisB]) * 0.5
+  const dx = point[axisA] - centerA
+  const dy = point[axisB] - centerB
+  const radius = Math.hypot(dx, dy)
+
+  const halfA = (ringBox.max[axisA] - ringBox.min[axisA]) * 0.5
+  const halfB = (ringBox.max[axisB] - ringBox.min[axisB]) * 0.5
+  const maxRadius = Math.hypot(halfA, halfB)
+
+  if (radius < maxRadius * 0.88 || radius > maxRadius * 1.02) return false
+  if (!isAngleOnDoorSemicircle(Math.atan2(dy, dx), side)) return false
+
+  const pad = 0.002
+  return (
+    point[axisA] >= ringBox.min[axisA] - pad
+    && point[axisA] <= ringBox.max[axisA] + pad
+    && point[axisB] >= ringBox.min[axisB] - pad
+    && point[axisB] <= ringBox.max[axisB] + pad
+  )
+}
+
+function sampleSemicircleRivetPositions(ringBox, plane, side, count) {
+  const { normalAxis, axisA, axisB } = plane
+  const centerA = (ringBox.min[axisA] + ringBox.max[axisA]) * 0.5
+  const centerB = (ringBox.min[axisB] + ringBox.max[axisB]) * 0.5
+  const halfA = (ringBox.max[axisA] - ringBox.min[axisA]) * 0.5
+  const halfB = (ringBox.max[axisB] - ringBox.min[axisB]) * 0.5
+  const radius = Math.hypot(halfA, halfB) * 0.96
+  const faceValue = ringBox.max[normalAxis] + 0.002
 
   const startAngle = side === 'left' ? Math.PI / 2 : -Math.PI / 2
   const endAngle = side === 'left' ? (Math.PI * 3) / 2 : Math.PI / 2
@@ -304,68 +324,17 @@ function sampleMedallionArcPositions(door, side, count, radiusScale = 1) {
   for (let i = 0; i < count; i += 1) {
     const t = count === 1 ? 0 : i / (count - 1)
     const angle = THREE.MathUtils.lerp(startAngle, endAngle, t)
-    positions.push(new THREE.Vector3(
-      center.x + Math.cos(angle) * radius,
-      center.y + Math.sin(angle) * radius,
-      z,
-    ))
+    const pos = new THREE.Vector3()
+    pos[axisA] = centerA + Math.cos(angle) * radius
+    pos[axisB] = centerB + Math.sin(angle) * radius
+    pos[normalAxis] = faceValue
+    positions.push(pos)
   }
 
   return positions
 }
 
-function sampleRingOuterEdgePositions(ring, count, band = 'outer') {
-  if (!ring?.isMesh?.geometry || count < 1) return []
-
-  const ringBox = getRingGeometryBox(ring)
-  if (!ringBox) return []
-
-  const posAttr = ring.geometry.getAttribute('position')
-  if (!posAttr) return []
-
-  const { normalAxis, axisA, axisB, faceValue } = getRingPlaneAxes(ringBox)
-  const centerA = (ringBox.min[axisA] + ringBox.max[axisA]) * 0.5
-  const centerB = (ringBox.min[axisB] + ringBox.max[axisB]) * 0.5
-
-  const candidates = []
-  for (let i = 0; i < posAttr.count; i += 1) {
-    _ringPoint.fromBufferAttribute(posAttr, i)
-
-    const a = _ringPoint[axisA] - centerA
-    const b = _ringPoint[axisB] - centerB
-    candidates.push({
-      point: _ringPoint.clone(),
-      angle: Math.atan2(b, a),
-      radius: Math.hypot(a, b),
-    })
-  }
-
-  if (candidates.length === 0) return []
-
-  const maxRadius = candidates.reduce((max, entry) => Math.max(max, entry.radius), 0)
-  const pool = candidates.filter((entry) => {
-    if (band === 'outer') return entry.radius >= maxRadius * 0.93
-    return entry.radius >= maxRadius * 0.72 && entry.radius <= maxRadius * 0.84
-  })
-  const sorted = (pool.length >= count ? pool : candidates)
-    .sort((a, b) => a.angle - b.angle)
-
-  const positions = []
-  for (let i = 0; i < count; i += 1) {
-    const entry = sorted[Math.min(sorted.length - 1, Math.floor((i / count) * sorted.length))]
-    entry.point[normalAxis] = Math.max(entry.point[normalAxis], faceValue)
-    positions.push(entry.point)
-  }
-
-  return positions
-}
-
-const _ringFaceOffset = new THREE.Vector3()
-const _ringCenterLocal = new THREE.Vector3()
-const _ringWorldPos = new THREE.Vector3()
-const _ringDoorPos = new THREE.Vector3()
-
-function pushRivetOntoRingFace(localPos, ringBox, normalAxis, axisA, axisB, outward = 0.006) {
+function pushRivetOntoRingFace(localPos, ringBox, normalAxis, axisA, axisB, outward = 0.004) {
   _ringCenterLocal.set(
     (ringBox.min.x + ringBox.max.x) * 0.5,
     (ringBox.min.y + ringBox.max.y) * 0.5,
@@ -411,51 +380,39 @@ function addMedallionRivets(model) {
       0.0011,
       0.0021,
     )
-    const rows = [
-      { band: 'outer', count: 52 },
-      { band: 'inner', count: 48 },
-    ]
+    /** Один ряд по внешнему краю обода */
+    const rivetCount = 28
 
     const plane = getRingPlaneAxes(ringBox)
     door.updateWorldMatrix(true, true)
     ring.updateWorldMatrix(true, true)
 
     let index = 0
-    rows.forEach(({ band, count }) => {
-      let positions = sampleRingOuterEdgePositions(ring, count, band)
-      let usedArcFallback = false
-      if (positions.length === 0) {
-        positions = sampleMedallionArcPositions(door, side, count, band === 'inner' ? 0.9 : 1)
-        usedArcFallback = true
-      }
-      positions.forEach((localPos) => {
-        if (usedArcFallback) {
-          _ringDoorPos.copy(localPos)
-          _ringDoorPos.z += 0.004
-        } else {
-          const onFace = pushRivetOntoRingFace(
-            localPos,
-            ringBox,
-            plane.normalAxis,
-            plane.axisA,
-            plane.axisB,
-            Math.max(ringSize[plane.normalAxis] * 0.55, 0.005),
-          )
-          _ringWorldPos.copy(ring.localToWorld(onFace.clone()))
-          _ringDoorPos.copy(door.worldToLocal(_ringWorldPos))
-        }
+    const positions = sampleSemicircleRivetPositions(ringBox, plane, side, rivetCount)
 
-        const rivet = new THREE.Mesh(geometry, rimMaterial)
-        rivet.name = `medallion_rivet_${side}_${index}`
-        rivet.position.copy(_ringDoorPos)
-        rivet.scale.setScalar(rivetRadius)
-        rivet.castShadow = true
-        rivet.receiveShadow = true
-        rivet.renderOrder = 8
-        rivet.layers.set(LIGHT_LAYERS.doors)
-        door.add(rivet)
-        index += 1
-      })
+    positions.forEach((ringLocalPos) => {
+      if (!isPointOnOuterRim(ringBox, ringLocalPos, plane, side)) return
+
+      const onFace = pushRivetOntoRingFace(
+        ringLocalPos,
+        ringBox,
+        plane.normalAxis,
+        plane.axisA,
+        plane.axisB,
+      )
+      _ringWorldPos.copy(ring.localToWorld(onFace.clone()))
+      _ringDoorPos.copy(door.worldToLocal(_ringWorldPos))
+
+      const rivet = new THREE.Mesh(geometry, rimMaterial)
+      rivet.name = `medallion_rivet_${side}_${index}`
+      rivet.position.copy(_ringDoorPos)
+      rivet.scale.setScalar(rivetRadius)
+      rivet.castShadow = true
+      rivet.receiveShadow = true
+      rivet.renderOrder = 8
+      rivet.layers.set(LIGHT_LAYERS.doors)
+      door.add(rivet)
+      index += 1
     })
   })
 }

@@ -28,39 +28,37 @@ jobs:
         env:
           BEGET_HOST: ${{ secrets.BEGET_HOST }}
           BEGET_USER: ${{ secrets.BEGET_USER }}
-          BEGET_SSH_KEY: ${{ secrets.BEGET_SSH_KEY }}
-          BEGET_KNOWN_HOSTS: ${{ secrets.BEGET_KNOWN_HOSTS }}
+          BEGET_PASSWORD: ${{ secrets.BEGET_PASSWORD }}
         run: |
-          test -n "$BEGET_HOST" || { echo "::error::Secret BEGET_HOST не задан"; exit 1; }
+          test -n "$BEGET_HOST" || { echo "::error::Secret BEGET_HOST не задан (Settings → Secrets → Actions)"; exit 1; }
           test -n "$BEGET_USER" || { echo "::error::Secret BEGET_USER не задан"; exit 1; }
-          test -n "$BEGET_SSH_KEY" || { echo "::error::Secret BEGET_SSH_KEY не задан"; exit 1; }
-          test -n "$BEGET_KNOWN_HOSTS" || { echo "::error::Secret BEGET_KNOWN_HOSTS не задан"; exit 1; }
+          test -n "$BEGET_PASSWORD" || { echo "::error::Secret BEGET_PASSWORD не задан"; exit 1; }
 
       - run: npm ci
       - run: npm run lint
       - run: npm test
       - run: npm run build
 
-      - name: Configure pinned SSH identity
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass openssh-client rsync
+
+      - name: Trust VPS host key
         env:
-          BEGET_SSH_KEY: ${{ secrets.BEGET_SSH_KEY }}
-          BEGET_KNOWN_HOSTS: ${{ secrets.BEGET_KNOWN_HOSTS }}
+          BEGET_HOST: ${{ secrets.BEGET_HOST }}
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "$BEGET_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$BEGET_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh-keyscan -H "$BEGET_HOST" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Test SSH to VPS
         env:
           BEGET_HOST: ${{ secrets.BEGET_HOST }}
           BEGET_USER: ${{ secrets.BEGET_USER }}
+          BEGET_PASSWORD: ${{ secrets.BEGET_PASSWORD }}
         run: |
-          ssh \
-            -o BatchMode=yes \
+          SSHPASS="$BEGET_PASSWORD" sshpass -e ssh \
             -o StrictHostKeyChecking=yes \
-            -o ConnectTimeout=20 \
+            -o ConnectTimeout=30 \
             "${BEGET_USER}@${BEGET_HOST}" \
             "mkdir -p /var/www/russo"
 
@@ -68,17 +66,20 @@ jobs:
         env:
           BEGET_HOST: ${{ secrets.BEGET_HOST }}
           BEGET_USER: ${{ secrets.BEGET_USER }}
+          BEGET_PASSWORD: ${{ secrets.BEGET_PASSWORD }}
         run: |
-          rsync -avz --delete \
+          SSHPASS="$BEGET_PASSWORD" sshpass -e rsync -avz --delete \
             --exclude 'models/shkaf_full.glb' \
-            -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20" \
+            -e "ssh -o StrictHostKeyChecking=yes -o ConnectTimeout=30" \
             dist/ "${BEGET_USER}@${BEGET_HOST}:/var/www/russo/"
 
       - name: Verify deployed files
         env:
           BEGET_HOST: ${{ secrets.BEGET_HOST }}
           BEGET_USER: ${{ secrets.BEGET_USER }}
+          BEGET_PASSWORD: ${{ secrets.BEGET_PASSWORD }}
         run: |
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes \
+          SSHPASS="$BEGET_PASSWORD" sshpass -e ssh \
+            -o StrictHostKeyChecking=yes \
             "${BEGET_USER}@${BEGET_HOST}" \
             "test -s /var/www/russo/index.html && chmod -R a+rX /var/www/russo"
