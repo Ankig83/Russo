@@ -37,7 +37,7 @@ export default function ReflectiveFloor() {
         raycast={() => null}
       >
         <planeGeometry args={[floor.size, floor.size]} />
-        <shadowMaterial transparent opacity={0.68} color="#000000" />
+        <shadowMaterial transparent opacity={0.5} color="#000000" />
       </mesh>
     </group>
   )

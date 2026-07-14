@@ -9,7 +9,7 @@ export const SCENE_BG_STYLE = {
 }
 
 /** ACES exposure */
-export const TONE_MAPPING_EXPOSURE = 0.88
+export const TONE_MAPPING_EXPOSURE = 1.08
 /** Макс. отдаление камеры от шкафа = maxDim × factor */
 export const ORBIT_MAX_DISTANCE_FACTOR = 3.5
 export const ORBIT_MIN_DISTANCE_FACTOR = 0.38
