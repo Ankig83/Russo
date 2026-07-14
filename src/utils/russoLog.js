@@ -5,7 +5,7 @@
  */
 
 const PREFIX = 'РУССО'
-export const RUSSO_BUILD = '2026-07-14-glb-opt'
+export const RUSSO_BUILD = '2026-07-14-meshopt'
 const listeners = new Set()
 
 function isHudEnabled() {
@@ -33,7 +33,7 @@ export const russoState = {
   bootAt: Date.now(),
   assetsActive: false,
   assetsProgress: 0,
-  assetsDoneAt: null,
+  glbAssetsDone: false,
   overlayWaitingMinMs: false,
   overlayDone: false,
   canvasReady: false,
@@ -95,7 +95,7 @@ export function russoPatch(partial) {
 
 function recomputeReady() {
   const ready =
-    !russoState.assetsActive &&
+    russoState.glbAssetsDone &&
     russoState.overlayDone &&
     russoState.canvasReady &&
     russoState.shkafReady
@@ -139,7 +139,7 @@ export function russoAssetsProgress({ active, progress, item }) {
   }
 
   if (wasActive && !active) {
-    russoPatch({ assetsDoneAt: Date.now(), lastEvent: 'assets done' })
+    russoPatch({ lastEvent: 'assets done' })
     russoLog('info', 'load', 'ассеты загружены (useProgress active=false)', {
       progress: pct,
     })
@@ -174,6 +174,7 @@ export function russoCanvasReady() {
 export function russoShkafReady(info) {
   russoPatch({
     shkafReady: true,
+    glbAssetsDone: true,
     drawers: info?.drawers ?? [],
     lastEvent: 'shkaf ready',
   })

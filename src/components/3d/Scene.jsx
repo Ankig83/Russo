@@ -19,7 +19,6 @@ import { useStudioPerformance } from '../../hooks/useStudioPerformance'
 import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
 import { SCENE_BG_STYLE, SCENE_CANVAS_BG, TONE_MAPPING_EXPOSURE } from '../../constants/scene'
 import { STUDIO, getStudioCameraConfig, getStudioOrbitConfig, getStudioCameraStartDistance, DEBUG_LOG_CAMERA_POSITION, USE_HDRI_ONLY, LIGHT_LAYERS, USE_REFERENCE_VOID_LOOK, REFERENCE_VOID, USE_HERO_LOOK, HERO, HERO_LIGHTBOX_ONLY, getEffectiveSplitCorpusLight, USE_STUDIO_CAMERA } from '../../constants/studioScene'
-import { useAppStore } from '../../store/appStore'
 import { russoCanvasReady, russoLog } from '../../utils/russoLog'
 
 /** ВРЕМЕННО: гасим все источники, кроме лайтбокса */
@@ -269,7 +268,6 @@ function LogStudioCameraStart() {
 export default function Scene() {
   const isMobile = useIsMobile()
   const perf = useStudioPerformance()
-  const loadingDone = useAppStore((s) => s.loadingDone)
   const scale = isMobile ? MOBILE_SCALE : DESKTOP_SCALE
   const refVoid = USE_REFERENCE_VOID_LOOK
   const camera = refVoid ? REFERENCE_VOID.camera : getStudioCameraConfig(isMobile)
@@ -420,7 +418,7 @@ export default function Scene() {
           {USE_HERO_LOOK
             ? <ReflectiveFloor />
             : (!refVoid || REFERENCE_VOID.showHorizon) && <StudioHorizon />}
-          {USE_HERO_LOOK && loadingDone && <HeroLogo />}
+          {USE_HERO_LOOK && <HeroLogo />}
           <group scale={scale} position={object.position}>
             <Shkaf sceneScale={scale} />
           </group>

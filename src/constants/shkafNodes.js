@@ -2,11 +2,11 @@ const assetBase = import.meta.env.BASE_URL
 
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
-export const SHKAF_MODEL_VERSION = '34'
+export const SHKAF_MODEL_VERSION = '35'
 export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
 
 /** Ножки model / model.001 из нового экспорта shkaf_.glb */
-export const SHKAF_LEGS_MODEL_VERSION = '1'
+export const SHKAF_LEGS_MODEL_VERSION = '2'
 export const SHKAF_LEGS_MODEL_PATH = `${assetBase}models/shkaf-legs.glb?v=${SHKAF_LEGS_MODEL_VERSION}`
 
 /** HDRI из GLB шкафа — не используем, сцена настраивается отдельно */
