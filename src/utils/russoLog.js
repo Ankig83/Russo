@@ -5,7 +5,7 @@
  */
 
 const PREFIX = 'РУССО'
-export const RUSSO_BUILD = '2026-07-13-p0-fixes'
+export const RUSSO_BUILD = '2026-07-14-glb-opt'
 const listeners = new Set()
 
 function isHudEnabled() {
