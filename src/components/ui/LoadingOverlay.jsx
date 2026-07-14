@@ -97,8 +97,10 @@ export default function LoadingOverlay() {
   const [hidden, setHidden] = useState(false)
   const [startMs] = useState(() => Date.now())
   const exitDone = useRef(false)
+  const hasSeenActive = useRef(false)
 
   useEffect(() => {
+    if (active) hasSeenActive.current = true
     russoAssetsProgress({ active, progress, item })
   }, [active, progress, item])
 
@@ -123,7 +125,7 @@ export default function LoadingOverlay() {
   }, [isMobile])
 
   useEffect(() => {
-    if (loadingDone || active || exitDone.current) return
+    if (loadingDone || active || exitDone.current || !hasSeenActive.current) return
 
     const elapsed = Date.now() - startMs
     const delay   = Math.max(0, minShowMs - elapsed)

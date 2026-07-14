@@ -31,7 +31,7 @@ const t0 = nowMs()
 
 export const russoState = {
   bootAt: Date.now(),
-  assetsActive: true,
+  assetsActive: false,
   assetsProgress: 0,
   assetsDoneAt: null,
   overlayWaitingMinMs: false,
