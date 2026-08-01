@@ -2,12 +2,96 @@ const assetBase = import.meta.env.BASE_URL
 
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
-export const SHKAF_MODEL_VERSION = '35'
+export const SHKAF_MODEL_VERSION = '36'
 export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
 
 /** Ножки model / model.001 из нового экспорта shkaf_.glb — НЕ сжимать meshopt (scale запечён в геометрию) */
 export const SHKAF_LEGS_MODEL_VERSION = '3'
 export const SHKAF_LEGS_MODEL_PATH = `${assetBase}models/shkaf-legs.glb?v=${SHKAF_LEGS_MODEL_VERSION}`
+
+/** Задняя стенка Beck_W из предыдущего shkaf.glb (не попала в shkaf_for_D) */
+export const SHKAF_BACKWALL_MODEL_VERSION = '1'
+export const SHKAF_BACKWALL_MODEL_PATH = `${assetBase}models/shkaf-backwall.glb?v=${SHKAF_BACKWALL_MODEL_VERSION}`
+export const USE_ATTACH_BACKWALL = true
+
+/** Кожаный ободок вокруг берёсты (из старого shkaf — ОкружностьБезье + Leather Dark Brown) */
+export const SHKAF_LEATHER_RIM_VERSION = '1'
+export const SHKAF_LEATHER_RIM_PATH = `${assetBase}models/shkaf-leather-rim.glb?v=${SHKAF_LEATHER_RIM_VERSION}`
+export const USE_ATTACH_LEATHER_RIM = true
+/**
+ * Доводка ободка после аттача (геометрия плоская — морфим под торец/ширину).
+ * widthScale 0.6 ≈ 5см → 3см по радиальной ширине ремешка.
+ */
+export const LEATHER_RIM_FIT = {
+  /** радиальная ширина ремешка относительно исходной */
+  widthScale: 0.6,
+  /** чуть снаружи края берёсты */
+  outerPad: 1.015,
+  /** глубина захода на торец (локальные ед. до поворота) */
+  edgeDepth: 0.02,
+  /** вытягивание к центру шва — перекрыть торец берёсты */
+  seamOverlap: 0.016,
+  /** зона шва от диаметра (x≈0), в которой наращиваем губу */
+  seamZone: 0.11,
+  /** вынос перед плоскостью берёсты */
+  frontZ: 0.003,
+}
+
+/** Детализация кожи — геометрия, не нарисованный слой. */
+export const LEATHER_HARDWARE = {
+  /** Мелкие заклёпки по каждой половине обода (×2). */
+  rimRivetsPerHalf: 28,
+  rimRivetRadius: 0.0062,
+  rimRivetRadialInset: 0.013,
+  /** Две крепёжные шайбы на концах каждой ручки. */
+  handleRivetRadius: 0.014,
+  handleRivetEndInset: 0.018,
+  color: '#a9773e',
+  roughness: 0.42,
+  metalness: 0.78,
+  env: 0.28,
+}
+/**
+ * Донастройка после attach на новый корпус (shkaf_for_D сдвинут по X ≈ +0.028).
+ * position — локальный offset на узле shkaf; scale — множитель к текущему scale.
+ */
+export const GLB_BACKWALL_ALIGN = {
+  // 0.048 увёл вправо; дельта корпуса ≈ +0.028
+  position: [0.026, 0, 0],
+  scale: 1,
+}
+
+/**
+ * AI-фасад закрытых дверей (doors_closed.glb) — полотно + берёста + ручки.
+ * Closed → этот GLB; open → door_* с теми же PBR-картами (без второго скачивания).
+ */
+export const SHKAF_CLOSED_DOORS_VERSION = '2'
+export const SHKAF_CLOSED_DOORS_PATH = `${assetBase}models/doors-closed.glb?v=${SHKAF_CLOSED_DOORS_VERSION}`
+export const USE_CLOSED_DOORS_FACADE = true
+/** true — карты с фасада на лице door_* (изнанка — тёмная медь) */
+export const USE_AI_DOOR_TEXTURES = true
+export const CLOSED_DOORS_NODE_NAME = 'closed_doors_facade'
+/**
+ * Подгонка группы к фасаду шкафа.
+ * Новый экспорт ~на +0.68 по Z относительно рабочих дверей.
+ */
+export const CLOSED_DOORS_ALIGN = {
+  position: [0, 0, -0.675],
+  scale: [1.015, 1, 1],
+}
+
+/**
+ * Зазор фаски по центру: Beresta_L/R в GLB сходятся внахлёст и перекрывают
+ * V-шов дверок. Сдвигаем каждую половину от шва на эту величину (локальные ед.).
+ * Крутить, если шов шире/уже меди, чем у полотна.
+ */
+export const BERESTA_SEAM_HALF_GAP = 0.012
+
+/**
+ * true — ножки уже в основном GLB (Table_Top_Frame + BézierCurve*).
+ * false — подтягивать отдельно через attachGlbLegs(shkaf-legs.glb).
+ */
+export const USE_BAKED_LEGS = true
 
 /** HDRI из GLB шкафа — не используем, сцена настраивается отдельно */
 export const USE_GLB_ENVIRONMENT = false
@@ -166,13 +250,17 @@ export const CABINET_SCENE_ROOTS = [
   ...DOOR_PIVOT_ALIASES.left,
   ...DOOR_PIVOT_ALIASES.right,
   'Beck_W',
+  /** Новая база-∞ из shkaf_for_D.glb (вне shkaf в корне сцены) */
+  'Table_Top_Frame',
 ]
 
 /**
  * Ножки: shkaf-legs.glb (model / model.001 из shkaf_.glb).
  * Старые leg_* в shkaf.glb заменяются в attachGlbLegs до placement.
  */
-export const GLB_LEG_NODES = ['leg_front_o', 'leg_beck_o']
+export const GLB_LEG_NODES = USE_BAKED_LEGS
+  ? ['Table_Top_Frame']
+  : ['leg_front_o', 'leg_beck_o']
 /**
  * Позиции ножек на узле shkaf — из shkaf-legs.glb (геометрия центрирована в mesh,
  * в отличие от main shkaf.glb где offset вшит в вершины).
@@ -181,11 +269,15 @@ export const GLB_LEG_TRANSFORMS = {
   leg_front_o: { position: [6.8722, 0.2391, 0.6595] },
   leg_beck_o: { position: [6.8722, 0.2391, 0.2335] },
 }
+/**
+ * Старые X-ножки (model / model.001) в shkaf_for_D.glb — битый X-transform (−25).
+ * Прячем, когда активна база Table_Top_Frame.
+ */
+export const BAKED_LEG_HIDE_NODES = ['model', 'model.001']
 /** bbox.min.y шкафа с ножками — fallback, если ножки ещё не в дереве */
 export const GLB_LEG_FLOOR_MIN_Y = 0.0222
 export const USE_PROCEDURAL_LEGS = false
 
-/** Ящики без текстовой подписи (кликабельны, но label не показываем) */
 export const HIDDEN_DRAWER_LABELS = []
 
 /** 3D-таблички на фасадах ящиков (mesh в GLB, привязываются к drawer_* в Shkaf.jsx) */

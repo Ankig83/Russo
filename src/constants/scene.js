@@ -1,6 +1,6 @@
-/** Фон страницы — тёмная студия */
-export const SCENE_BG = '#0a0a0a'
-export const SCENE_CANVAS_BG = '#0e0e0e'
+/** Каталожная бетонная студия — совпадает с краями backdrop при загрузке. */
+export const SCENE_BG = '#505a59'
+export const SCENE_CANVAS_BG = '#505a59'
 export const SCENE_BG_STYLE = {
   background: SCENE_BG,
   width: '100vw',
@@ -9,7 +9,7 @@ export const SCENE_BG_STYLE = {
 }
 
 /** ACES exposure */
-export const TONE_MAPPING_EXPOSURE = 1.08
+export const TONE_MAPPING_EXPOSURE = 0.92
 /** Макс. отдаление камеры от шкафа = maxDim × factor */
 export const ORBIT_MAX_DISTANCE_FACTOR = 3.5
 export const ORBIT_MIN_DISTANCE_FACTOR = 0.38

@@ -46,6 +46,15 @@ export default function DebugHud() {
         doors:{state.doorsOpen ? 'open' : 'closed'} · anim:{state.animating ? '1' : '0'}
         {state.activeDrawerId ? ` · ${state.activeDrawerId}` : ''}
       </div>
+      {(state.cameraPos || state.cameraTarget) && (
+        <div className="mt-1 border-t border-white/10 pt-1 text-[#e4b040]/90">
+          <div>cam: {state.cameraPos ?? '—'}</div>
+          <div className="text-white/55">
+            tgt: {state.cameraTarget ?? '—'}
+            {state.cameraDist != null ? ` · d ${state.cameraDist}` : ''}
+          </div>
+        </div>
+      )}
       {hit && (
         <div className="mt-1 border-t border-white/10 pt-1 text-white/70">
           <div>

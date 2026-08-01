@@ -9,8 +9,7 @@ import StudioBackdrop from './StudioBackdrop'
 import StudioEnvironment from './StudioEnvironment'
 import StudioHorizon from './StudioHorizon'
 import HeroBackdrop from './HeroBackdrop'
-import HeroShadowLight from './HeroShadowLight'
-import HeroLogo from './HeroLogo'
+// import HeroLogo from './HeroLogo' // временно выкл. — раскомментировать вместе с JSX ниже
 import ReflectiveFloor from './ReflectiveFloor'
 import StudioLights from './StudioLights'
 import StudioShadowLight from './StudioShadowLight'
@@ -19,9 +18,9 @@ import { useStudioPerformance } from '../../hooks/useStudioPerformance'
 import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
 import { SCENE_BG_STYLE, SCENE_CANVAS_BG, TONE_MAPPING_EXPOSURE } from '../../constants/scene'
 import { STUDIO, getStudioCameraConfig, getStudioOrbitConfig, getStudioCameraStartDistance, DEBUG_LOG_CAMERA_POSITION, USE_HDRI_ONLY, LIGHT_LAYERS, USE_REFERENCE_VOID_LOOK, REFERENCE_VOID, USE_HERO_LOOK, HERO, HERO_LIGHTBOX_ONLY, getEffectiveSplitCorpusLight, USE_STUDIO_CAMERA } from '../../constants/studioScene'
-import { russoCanvasReady, russoLog } from '../../utils/russoLog'
+import { russoCanvasReady, russoLog, russoPatch } from '../../utils/russoLog'
 
-/** ВРЕМЕННО: гасим все источники, кроме лайтбокса */
+/** Gallery mode: только четыре источника HeroBackdrop */
 const lightboxOnly = USE_HERO_LOOK && HERO_LIGHTBOX_ONLY
 
 /** Камера по умолчанию рендерит только layer 0 — без этого корпус (layer 1) невидим */
@@ -31,6 +30,8 @@ function EnableViewLayers() {
   useEffect(() => {
     camera.layers.enable(LIGHT_LAYERS.doors)
     if (getEffectiveSplitCorpusLight()) camera.layers.enable(LIGHT_LAYERS.corpus)
+    camera.layers.enable(LIGHT_LAYERS.accent)
+    camera.layers.enable(LIGHT_LAYERS.interior)
   }, [camera])
 
   return null
@@ -41,8 +42,9 @@ function GlProfile({ perf }) {
 
   useEffect(() => {
     gl.shadowMap.type = perf.pcfSoftShadows
-      ? THREE.PCFSoftShadowMap
+      ? THREE.VSMShadowMap
       : THREE.PCFShadowMap
+    gl.shadowMap.needsUpdate = true
   }, [gl, perf.pcfSoftShadows])
 
   return null
@@ -64,15 +66,19 @@ function handleCanvasCreated({ gl, scene }) {
     : USE_REFERENCE_VOID_LOOK
       ? REFERENCE_VOID.background
       : STUDIO.backdrop.wallTopColor
-  const exposure = USE_REFERENCE_VOID_LOOK
-    ? REFERENCE_VOID.toneMappingExposure
-    : TONE_MAPPING_EXPOSURE
+  const exposure = USE_HERO_LOOK && HERO.toneMappingExposure != null
+    ? HERO.toneMappingExposure
+    : USE_REFERENCE_VOID_LOOK
+      ? REFERENCE_VOID.toneMappingExposure
+      : TONE_MAPPING_EXPOSURE
 
   gl.outputColorSpace = THREE.SRGBColorSpace
   gl.toneMapping = THREE.ACESFilmicToneMapping
   gl.toneMappingExposure = exposure
   gl.shadowMap.enabled = !USE_REFERENCE_VOID_LOOK || REFERENCE_VOID.directionalShadow
   gl.shadowMap.type = THREE.PCFSoftShadowMap
+  gl.dithering = true
+  if (USE_HERO_LOOK) scene.environment = null
   scene.background = new THREE.Color(bg)
   russoCanvasReady()
 }
@@ -265,6 +271,35 @@ function LogStudioCameraStart() {
   return null
 }
 
+/** Live camera → DebugHud (pos / target / dist) */
+function CameraHudTracker() {
+  const camera = useThree((s) => s.camera)
+  const controls = useThree((s) => s.controls)
+  const last = useRef('')
+
+  useFrame(() => {
+    if (!camera) return
+    const t = controls?.target
+    const px = camera.position.x.toFixed(2)
+    const py = camera.position.y.toFixed(2)
+    const pz = camera.position.z.toFixed(2)
+    const tx = t ? t.x.toFixed(2) : '—'
+    const ty = t ? t.y.toFixed(2) : '—'
+    const tz = t ? t.z.toFixed(2) : '—'
+    const dist = t ? camera.position.distanceTo(t).toFixed(2) : '—'
+    const key = `${px},${py},${pz}|${tx},${ty},${tz}|${dist}`
+    if (key === last.current) return
+    last.current = key
+    russoPatch({
+      cameraPos: `${px} ${py} ${pz}`,
+      cameraTarget: `${tx} ${ty} ${tz}`,
+      cameraDist: dist,
+    })
+  })
+
+  return null
+}
+
 export default function Scene() {
   const isMobile = useIsMobile()
   const perf = useStudioPerformance()
@@ -277,15 +312,21 @@ export default function Scene() {
   const maxOrbitDistance = Math.max(orbit.maxDistance ?? startDistance, startDistance)
   const object = STUDIO.object
   const shadow = STUDIO.shadow
-  const postprocessing = refVoid
-    ? { ...STUDIO.postprocessing, ...REFERENCE_VOID.postprocessing }
-    : STUDIO.postprocessing
+  const postprocessing = USE_HERO_LOOK && HERO.postprocessing
+    ? { ...STUDIO.postprocessing, ...HERO.postprocessing }
+    : refVoid
+      ? { ...STUDIO.postprocessing, ...REFERENCE_VOID.postprocessing }
+      : STUDIO.postprocessing
   const canvasBg = USE_HERO_LOOK
     ? HERO.background
     : refVoid
       ? REFERENCE_VOID.background
       : SCENE_CANVAS_BG
-  const toneExposure = refVoid ? REFERENCE_VOID.toneMappingExposure : TONE_MAPPING_EXPOSURE
+  const toneExposure = USE_HERO_LOOK && HERO.toneMappingExposure != null
+    ? HERO.toneMappingExposure
+    : refVoid
+      ? REFERENCE_VOID.toneMappingExposure
+      : TONE_MAPPING_EXPOSURE
   const [webglLost, setWebglLost] = useState(false)
 
   useEffect(() => {
@@ -406,23 +447,28 @@ export default function Scene() {
         )}
         <StudioCameraSync position={camera.position} target={camera.target} />
         {DEBUG_LOG_CAMERA_POSITION && <LogStudioCameraStart />}
+        <CameraHudTracker />
 
-        {(!refVoid || REFERENCE_VOID.showBackdrop) && !USE_HERO_LOOK && <StudioBackdrop />}
         {USE_HERO_LOOK && <HeroBackdrop />}
-        {USE_HERO_LOOK && <HeroShadowLight />}
         {!lightboxOnly && (!USE_HDRI_ONLY || refVoid) && <StudioLights />}
         {!lightboxOnly && !refVoid && <StudioShadowLight />}
 
         <Suspense fallback={null}>
-          {!lightboxOnly && (!refVoid || REFERENCE_VOID.showEnvironment) && <StudioEnvironment />}
+          {(!refVoid || REFERENCE_VOID.showBackdrop) && !USE_HERO_LOOK && <StudioBackdrop />}
+          {/* Hero: IBL из HERO.env (фон чёрный). Studio: STUDIO.env. */}
+          {(USE_HERO_LOOK
+            ? Boolean(HERO.env)
+            : (!lightboxOnly && (!refVoid || REFERENCE_VOID.showEnvironment))) && (
+            <StudioEnvironment />
+          )}
           {USE_HERO_LOOK
             ? <ReflectiveFloor />
             : (!refVoid || REFERENCE_VOID.showHorizon) && <StudioHorizon />}
-          {USE_HERO_LOOK && <HeroLogo />}
+          {/* {USE_HERO_LOOK && <HeroLogo />} — большой 3D-лого на лайтбоксе, вернуть при необходимости */}
           <group scale={scale} position={object.position}>
             <Shkaf sceneScale={scale} />
           </group>
-          {(!USE_HERO_LOOK && (!refVoid || REFERENCE_VOID.contactShadows)) && (
+          {(!refVoid || REFERENCE_VOID.contactShadows) && (
             <ContactShadows
               position={shadow.position}
               opacity={shadow.opacity}
@@ -446,11 +492,11 @@ export default function Scene() {
                 quality="low"
                 aoRadius={postprocessing.aoRadius}
                 intensity={postprocessing.aoIntensity}
-                distanceFalloff={1.2}
+                distanceFalloff={1}
                 depthAwareUpsampling
               />
             )}
-            {perf.bloom && (
+            {perf.bloom && postprocessing.bloomIntensity > 0 && (
               <Bloom
                 intensity={postprocessing.bloomIntensity}
                 luminanceThreshold={postprocessing.bloomThreshold}

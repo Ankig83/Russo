@@ -3,6 +3,7 @@ import Scene from '../components/3d/Scene'
 import Header from '../components/ui/Header'
 import LoadingOverlay from '../components/ui/LoadingOverlay'
 import DebugHud from '../components/ui/DebugHud'
+import ActiveSectionTitle from '../components/ui/ActiveSectionTitle'
 import { useShkafStore } from '../store/shkafStore'
 import { russoLog, russoPatch } from '../utils/russoLog'
 
@@ -25,6 +26,7 @@ export default function Home() {
   return (
     <div className="relative h-dvh min-h-screen w-screen overflow-hidden">
       <Scene />
+      <ActiveSectionTitle />
       <Header />
       <LoadingOverlay />
       <DebugHud />

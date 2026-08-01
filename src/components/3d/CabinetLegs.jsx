@@ -166,11 +166,11 @@ export default function CabinetLegs() {
     const p = CORPUS_PBR.plainDarkCopper
     return new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(p.color),
-      metalness: 0.88,
-      roughness: 0.32,
-      envMapIntensity: 0.9,
-      clearcoat: 0.08,
-      clearcoatRoughness: 0.55,
+      metalness: 0.8,
+      roughness: 0.68,
+      envMapIntensity: 0.2,
+      clearcoat: 0,
+      clearcoatRoughness: 1,
     })
   }, [])
 

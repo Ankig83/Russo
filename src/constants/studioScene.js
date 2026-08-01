@@ -10,6 +10,18 @@ export const USE_RAW_GLB_MATERIALS = true
 /** true — anti-glare: beresta matte, corpus satin, cap specular/env */
 export const USE_MATERIAL_FIXUPS = true
 
+/**
+ * Тёмное дерево (dark-wood-stain) на корпус снаружи + внутри + дверки.
+ * false — вернуть материалы из GLB.
+ */
+export const USE_WOOD_DOORS = true
+
+/**
+ * Бронза (bronze-unity pack) только на ножки.
+ * false — прежняя aged brass из attachGlbLegs.
+ */
+export const USE_BRONZE_METAL = true
+
 /** Sculpted light: HDRI + key/rim + beresta на круг */
 export const USE_SCULPTED_LIGHT = true
 /** Как Blender World + мягкий key/rim для объёма */
@@ -21,10 +33,12 @@ export const STUDIO_FLOOR_TILE_PATH = `${assetBase}models/studio-floor-tile.glb?
 export const USE_STUDIO_FLOOR_TILE = true
 
 /** RectArea: двери (0) vs корпус (1) — раздельный свет */
-export const USE_SPLIT_CORPUS_LIGHT = true
+export const USE_SPLIT_CORPUS_LIGHT = false
 export const LIGHT_LAYERS = {
   doors: 0,
   corpus: 1,
+  accent: 2,
+  interior: 3,
 }
 
 /**
@@ -34,138 +48,122 @@ export const LIGHT_LAYERS = {
  */
 export const USE_HERO_LOOK = true
 
-/**
- * ВРЕМЕННО: только лайтбокс (панель + area-fill) + hero rim.
- * Без StudioLights, IBL, directional, hero FillAreaLight остаётся (часть лайтбокса).
- * false — вернуть весь свет.
- */
+/** Gallery rig из HERO — без StudioLights / directional; IBL — через HERO.env. */
 export const HERO_LIGHTBOX_ONLY = true
 
-/** Настройки геройской сцены: лайтбокс-стена + отражающий пол */
+/**
+ * Premium catalog lighting (Loewe / Poltrona Frau):
+ * warm key + cool rim + soft fill + brass accent + interior LED.
+ * Старые значения закомментированы ниже для отката.
+ */
 export const HERO = {
-  /** Тёмный фон, чтобы лайтбокс читался */
-  background: '#050505',
-  /** Светящаяся стена-лайтбокс за шкафом — молочный рассеянный свет */
-  lightbox: {
-    /** молочно-белый (чуть тёплый) */
-    color: '#fff6ec',
-    /** высота как у бывшего луча, ширина ~3 шкафа */
-    position: [0, 3.0, -2.4],
-    width: 4.2,
-    height: 6.4,
-    /** яркость (>1 → уходит за bloom threshold, светится как луч) */
-    strength: 2.6,
-    /** мягкость краёв (0..0.5 от размера) */
-    feather: 0.14,
-  },
-  /** Рассеянный fill-свет от лайтбокса на шкаф (area light) */
-  fillLight: {
-    color: '#fff4ea',
-    position: [0, 2.7, -1.95],
-    aimAt: [0, 1.2, 0],
-    width: 4.2,
-    height: 6.0,
-    intensity: 2.4,
-  },
+  background: '#000000',
   /**
-   * Ободковый свет сверху-сзади-СПРАВА — очерчивает силуэт и слегка
-   * подсвечивает текстуру дверок с правого бока. intensity — крутилка.
+   * IBL — микроблики / контактные тона на меди и бересте.
+   * background={false}: void остаётся чёрным, HDRI только как envMap.
+   * Poly Haven studio_small_08 — компактная студия, мягкие софтбоксы.
    */
+  env: {
+    url: `${assetBase}HDRI/studio_small_08_2k.hdr?v=1`,
+    preset: null,
+    /** IBL только формирует микроблики; основной рисунок даёт key. */
+    intensity: 0.3,
+  },
+  /*
+   * PREV — gallery four-light (до catalog retune):
+   * keyLight: { color:'#fff6ed', temperature:5400, position:[-3.2,4.4,3.2],
+   *   aimAt:[0,1.35,0.05], width:4.8, height:5.6, closedIntensity:1.9, openIntensity:0.75 }
+   * rimLight: { color:'#fffaf7', temperature:6500, position:[2.4,3.0,-2.6],
+   *   aimAt:[0,1.45,0], width:1.2, height:4.0, intensity:0.18 }
+   * accentLight: { color:'#ffe0bd', temperature:4300, position:[2.1,2.0,2.6],
+   *   aimAt:[0,1.35,0.3], width:0.28, height:2.4, closedIntensity:0.9, openIntensity:0.4 }
+   * interiorLight: { color:'#ffc58f', temperature:2700, position:[0,2.25,0.05],
+   *   aimAt:[0,1.05,-0.2], width:1.25, height:0.18, closedIntensity:0, openIntensity:3.1 }
+   * fillLight: (не было)
+   * floor: { color:'#050505', radius:3.6, height:0.08, resolution:512, mirror:0.08,
+   *   blur:[320,120], mixBlur:1.4, mixStrength:0.16, roughness:0.88, metalness:0 }
+   */
+  /** Большой мягкий key: скользит по фактуре, не выбивает медь в белое. */
+  keyLight: {
+    color: '#ffe3cc',
+    temperature: 4000,
+    position: [-3.4, 4.1, 4.4],
+    aimAt: [0, 1.28, 0.02],
+    width: 6.8,
+    height: 7.2,
+    closedIntensity: 1.12,
+    openIntensity: 0.62,
+  },
+  /** Cool rim ~5–10% key — силуэт сверху и по скруглениям */
   rimLight: {
-    color: '#ffe9d6',
-    position: [0.6, 3.4, -2.0],
-    intensity: 6.0,
-    distance: 8,
-    decay: 2,
-  },
-  /**
-   * Контурный свет на ДВЕРКИ слева-спереди. Только layer 0 (двери) —
-   * боковины корпуса (layer 1) не задевает. intensity — крутилка силы.
-   */
-  doorRimLeft: {
-    color: '#fff2e0',
-    position: [-3.4, 1.7, 1.9],
-    aimAt: [0, 1.4, 0.35],
-    width: 1.4,
+    color: '#dce8ff',
+    temperature: 6800,
+    position: [1.2, 4.0, -2.8],
+    aimAt: [0, 1.55, 0],
+    width: 1.6,
     height: 3.6,
-    intensity: 1.5,
+    intensity: 0.1,
   },
-  /**
-   * Зеркальный контурный свет СПРАВА-спереди — та же цель, симметричная
-   * позиция. Вместе с doorRimLeft даёт равномерную засветку патины дверок.
-   */
-  doorRimRight: {
-    color: '#fff2e0',
-    position: [3.4, 1.7, 1.9],
-    aimAt: [0, 1.4, 0.35],
-    width: 1.4,
-    height: 3.6,
-    intensity: 1.5,
+  /** Холодный слабый fill: читает тени, но не создаёт второй засвет. */
+  fillLight: {
+    color: '#dce6f2',
+    temperature: 6000,
+    position: [3.4, 2.4, 3.6],
+    aimAt: [0, 1.25, 0.05],
+    width: 5.4,
+    height: 6.2,
+    intensity: 0.16,
   },
-  /**
-   * Мягкий beauty-свет только на внешние дверки: поднимает патину без влияния
-   * на корпус/интерьер/фон. Широкий и слабый, чтобы не вернуть белые блики.
-   */
-  doorFrontSoft: {
-    color: '#ffe8cf',
-    position: [0, 2.05, 3.15],
-    aimAt: [0, 1.38, 0.28],
-    width: 3.2,
-    height: 2.5,
-    intensity: 1.8,
+  /** Узкий accent на латунь (рейки / ручки) */
+  accentLight: {
+    color: '#ffe0bd',
+    temperature: 4300,
+    position: [1.6, 1.9, 2.85],
+    aimAt: [0, 1.38, 0.35],
+    width: 0.22,
+    height: 2.1,
+    closedIntensity: 0.28,
+    openIntensity: 0.2,
   },
-  /**
-   * Узкий fill на медальон (береста + кожа + ручки) — читает рельеф и прожилки.
-   * Только layer дверей, не трогает корпус.
-   */
-  doorMedallion: {
-    color: '#fff4e4',
-    position: [0, 1.52, 2.35],
-    aimAt: [0, 1.38, 0.3],
-    width: 1.05,
-    height: 1.08,
-    intensity: 1.75,
+  /** Interior warm LED ~2700K — только при открытых дверях */
+  interiorLight: {
+    color: '#ffb870',
+    temperature: 2700,
+    position: [0, 2.22, 0.02],
+    aimAt: [0, 1.1, -0.15],
+    width: 1.35,
+    height: 0.14,
+    closedIntensity: 0,
+    openIntensity: 2.85,
   },
-  /**
-   * Directional-тени: пол (шкаф + ножки) и фронт дверей (ручки → beresta).
-   * RectArea/point в hero не дают shadow map — только directional.
-   */
-  shadow: {
-    floor: {
-      position: [1.4, 8.2, 2.6],
-      target: [0, 0.15, 0],
-      intensity: 0.34,
-      color: '#fff0e6',
-      mapSize: 2048,
-      radius: 2.2,
-      camera: { left: -5.5, right: 5.5, top: 5.5, bottom: -1.5, near: 0.4, far: 16 },
-      bias: -0.00018,
-      normalBias: 0.028,
-    },
-    door: {
-      /** Слева-спереди, низко — тень ручек падает на beresta вниз-вправо */
-      position: [-2.6, 2.85, 4.6],
-      target: [0, 1.36, 0.28],
-      intensity: 0.42,
-      color: '#fff4ea',
-      mapSize: 2048,
-      radius: 1.4,
-      camera: { left: -1.6, right: 1.6, top: 1.8, bottom: -1.2, near: 0.2, far: 8 },
-      bias: -0.00006,
-      normalBias: 0.01,
-    },
-  },
-  /** Отражающий пол (drei MeshReflectorMaterial) */
+  /** Пол — soft polished wood reflection, не зеркало */
   floor: {
-    color: '#070707',
-    size: 44,
+    color: '#060504',
+    radius: 3.6,
+    height: 0.08,
     resolution: 512,
-    mirror: 0.78,
-    blur: [220, 80],
-    mixBlur: 1.1,
-    mixStrength: 3.4,
-    roughness: 0.82,
-    metalness: 0.55,
+    mirror: 0.035,
+    blur: [480, 200],
+    mixBlur: 2.0,
+    mixStrength: 0.11,
+    roughness: 0.93,
+    metalness: 0,
+  },
+  /** Hero post — мягче AO / контраст, чтобы тени не уходили в pure black */
+  toneMappingExposure: 0.9,
+  postprocessing: {
+    /** Узкий AO — мелкие контактные тени вместо широкой грязной каймы. */
+    aoRadius: 0.24,
+    aoIntensity: 0.72,
+    bloomIntensity: 0.02,
+    bloomThreshold: 1.05,
+    bloomSmoothing: 0.28,
+    noiseOpacity: 0,
+    vignetteOffset: 0.78,
+    vignetteDarkness: 0.08,
+    contrast: 0.015,
+    brightness: 0.012,
+    saturation: -0.01,
   },
   /** Объёмный логотип РУССО (экструзия из SVG) на лайтбоксе выше шкафа */
   logo: {
@@ -271,21 +269,24 @@ export const MATERIAL_SPECULAR_CAP = 0.18
 export const STUDIO = {
   /** IBL — background={false}, cyclorama из StudioBackdrop */
   env: {
-    url: `${assetBase}HDRI/ferndale_studio_03_2k.exr?v=1`,
+    url: `${assetBase}HDRI/studio_small_08_2k.hdr?v=2`,
     /** если задан — url игнорируется (drei preset: studio, warehouse, …) */
     preset: null,
-    intensity: 0.92,
+    intensity: 0.34,
     /** floor env = intensity × floorEnvScale */
     floorEnvScale: 0.45,
   },
   backdrop: {
-    floorColor: '#0e0e0e',
-    wallBottomColor: '#0a0a0a',
-    wallTopColor: '#121212',
+    floorColor: '#ffffff',
+    wallBottomColor: '#737d7c',
+    wallTopColor: '#4b5655',
     wallZ: -5.5,
     wallHeight: 11,
     width: 52,
     floorFront: 7,
+    /** Стены остаются физическими, но углы вынесены за кадр как в референсе. */
+    roomLeftX: -7.5,
+    roomRightX: 7.5,
   },
   floorTile: {
     /** одна плитка, м */
@@ -301,17 +302,17 @@ export const STUDIO = {
   horizon: {
     size: 36,
     y: -0.04,
-    color: '#060606',
-    edgeColor: '#0c0c0e',
-    roughness: 0.84,
-    metalness: 0.08,
+    color: '#ffffff',
+    edgeColor: '#68706d',
+    roughness: 0.91,
+    metalness: 0,
     /** env = STUDIO.env.intensity × envScale */
-    envScale: 0.14,
+    envScale: 1.05,
   },
   camera: {
-    fov: 34,
-    position: [0.09, 1.85, 6.55],
-    target: [0, 1.7, 0],
+    fov: 32,
+    position: [0, 1.28, 5.15],
+    target: [0, 1.28, 0],
   },
   /** Шкаф — центр корпуса на x=0 (лайтбокс / логотип); alignOffset — ручной дотюнинг */
   object: {
@@ -336,11 +337,11 @@ export const STUDIO = {
   },
   lights: {
     key: {
-      position: [3.8, 3.8, 3.5],
-      width: 5.5,
-      height: 6.5,
-      intensity: 0.22,
-      color: '#fff4ea',
+      position: [-3.8, 4.4, 4.2],
+      width: 6.8,
+      height: 7.5,
+      intensity: 0.82,
+      color: '#fff1e3',
     },
     rim: {
       position: [-4.0, 3.4, -2.5],
@@ -348,26 +349,19 @@ export const STUDIO = {
       aimAt: [0, 1.35, 0],
       width: 2.2,
       height: 3.5,
-      intensity: 0.1,
-      color: '#b8c8e8',
+      intensity: 0.07,
+      color: '#cbd7de',
     },
     fill: {
-      position: [0, 2.2, 5.0],
-      width: 3.5,
-      height: 3.0,
-      intensity: 0.04,
-      color: '#f0f0f0',
+      position: [3.8, 2.2, 4.5],
+      width: 5.5,
+      height: 6.2,
+      intensity: 0.19,
+      color: '#dce4e5',
     },
     /** Береста — узкий фронтальный, без пересвета круга */
-    beresta: {
-      position: [0, 1.55, 2.8],
-      target: [0, 1.12, 0],
-      width: 2.2,
-      height: 2.0,
-      intensity: 0.12,
-      color: '#fff5e8',
-    },
-    ambient: 0.04,
+    beresta: null,
+    ambient: 0.085,
     corpus: {
       position: [0, 1.05, 4.2],
       width: 3.8,
@@ -382,40 +376,45 @@ export const STUDIO = {
       intensity: 0.14,
       color: '#b0a090',
     },
-    /** Directional — тени; intensity низкий, чтобы не заливать пол */
+    /** Большой spot спереди-слева: перспективная мягкая тень уходит к задней стене. */
     shadow: {
-      position: [3.5, 8, 3.2],
-      target: [0, 1.05, 0],
-      intensity: 0.16,
+      position: [-4.6, 7.2, 4.8],
+      target: [0.15, 0.9, -0.55],
+      intensity: 10,
       color: '#fff0e6',
-      mapSize: 1536,
-      radius: 2.5,
-      camera: { left: -6, right: 6, top: 6, bottom: -6, near: 0.5, far: 18 },
-      bias: -0.0002,
-      normalBias: 0.03,
+      angle: 1.02,
+      penumbra: 1,
+      distance: 22,
+      decay: 1.55,
+      mapSize: 2048,
+      radius: 8,
+      blurSamples: 24,
+      camera: { near: 0.5, far: 24 },
+      bias: -0.00012,
+      normalBias: 0.018,
     },
   },
   shadow: {
-    position: [0, 0.002, 0],
-    opacity: 0.62,
-    blur: 2.2,
-    far: 4.2,
+    position: [0, 0.043, 0],
+    opacity: 0.16,
+    blur: 4.2,
+    far: 0.42,
     resolution: 1024,
-    scale: 9,
+    scale: 3.2,
     color: '#000000',
   },
   postprocessing: {
-    aoRadius: 1.6,
-    aoIntensity: 1.5,
-    bloomIntensity: 0.07,
-    bloomThreshold: 0.88,
+    aoRadius: 0.28,
+    aoIntensity: 0.62,
+    bloomIntensity: 0,
+    bloomThreshold: 1.15,
     bloomSmoothing: 0.2,
-    noiseOpacity: 0.025,
-    vignetteOffset: 0.68,
-    vignetteDarkness: 0.32,
-    contrast: 0.08,
-    brightness: 0.01,
-    saturation: 0.05,
+    noiseOpacity: 0,
+    vignetteOffset: 0.62,
+    vignetteDarkness: 0.24,
+    contrast: 0.06,
+    brightness: 0,
+    saturation: -0.035,
   },
 }
 
@@ -493,9 +492,9 @@ export const STUDIO_CAMERA_START_DISTANCE = getStudioCameraStartDistance(STUDIO.
  */
 export const STUDIO_MOBILE = {
   camera: {
-    fov: 32,
-    position: [-0.72, 0.48, 3.35],
-    target: [0, 0.81, 0],
+    fov: 34,
+    position: [0, 1.22, 5.8],
+    target: [0, 1.22, 0],
   },
   orbit: {
     minAzimuth: -0.55,
@@ -545,6 +544,7 @@ export function getEffectiveSplitCorpusLight() {
 /** IBL intensity — единая точка для пола/горизонта/Environment */
 export function getStudioEnvIntensity() {
   if (USE_REFERENCE_VOID_LOOK) return REFERENCE_VOID.envIntensity
+  if (USE_HERO_LOOK && HERO.env?.intensity != null) return HERO.env.intensity
   return STUDIO.env.intensity
 }
 
@@ -573,7 +573,7 @@ export const CAMERA_INTRO = {
   ease: 'power3.out',
 }
 
-export const DEBUG_LOG_CAMERA_POSITION = false
+export const DEBUG_LOG_CAMERA_POSITION = true
 
 /**
  * GPU-профили — Scene выбирает tier автоматически (desktop → medium).

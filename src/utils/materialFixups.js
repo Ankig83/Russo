@@ -11,7 +11,7 @@ import {
   PLAIN_COPPER_MATERIALS,
   PLAIN_DARK_COPPER_MATERIALS,
   DOOR_PANEL_SURFACE_MATERIALS,
-  PLAQUE_MATERIALS,
+  // PLAQUE_MATERIALS, // legacy drawer plaques disabled
   BODY_SHELL_MATERIALS,
   CORPUS_REFLECTIVE_MATERIALS,
 } from '../constants/shkafNodes'
@@ -37,7 +37,7 @@ const plainCopperNames = new Set(PLAIN_COPPER_MATERIALS)
 const plainDarkCopperNames = new Set(PLAIN_DARK_COPPER_MATERIALS)
 const doorPanelNames = new Set(DOOR_PANEL_SURFACE_MATERIALS)
 const brassHandleNames = new Set(BRASS_HANDLE_MATERIALS)
-const plaqueNames = new Set(PLAQUE_MATERIALS)
+// const plaqueNames = new Set(PLAQUE_MATERIALS) // legacy drawer plaques disabled
 const rimAndHandleHighlightNames = new Set(['Material.001', 'Материал.003'])
 
 const warnedRoughness = new Set()
@@ -103,9 +103,10 @@ function isBrassHandleMaterial(mat) {
   return mat?.name && brassHandleNames.has(mat.name)
 }
 
-function isPlaqueMaterial(mat) {
-  return mat?.name && plaqueNames.has(mat.name)
-}
+// Legacy drawer plaques disabled:
+// function isPlaqueMaterial(mat) {
+//   return mat?.name && plaqueNames.has(mat.name)
+// }
 
 /** Делим только одинаковые mat.name (Beresta_L + Beresta_R), не все бересты сразу */
 function shareBerestaMaterialsByName(root) {
@@ -288,7 +289,8 @@ function tuneDoorPatinaMaterial(mat) {
   if ('clearcoat' in mat) mat.clearcoat = 0
   if ('sheen' in mat) mat.sheen = 0
 
-  mat.side = THREE.FrontSide
+  // Open doors face the camera with the back side — FrontSide = «пустые» двери
+  mat.side = THREE.DoubleSide
   mat.needsUpdate = true
 }
 
@@ -598,7 +600,8 @@ function tuneDoorPanelMaterial(mat) {
   if ('clearcoat' in mat) mat.clearcoat = 0
   if ('sheen' in mat) mat.sheen = 0
 
-  mat.side = THREE.FrontSide
+  // Open doors face the camera with the back side — FrontSide = «пустые» двери
+  mat.side = THREE.DoubleSide
   mat.needsUpdate = true
 }
 
@@ -614,26 +617,23 @@ export function applyDoorPanelMaterialFixups(root) {
   })
 }
 
-/** Таблички ящиков — читаемый текст, без сильных бликов */
-function tunePlaqueMaterial(mat) {
-  if (!mat.isMeshStandardMaterial && !mat.isMeshPhysicalMaterial) return
-
-  if (mat.map) mat.color.set('#ffffff')
-
-  mat.metalness = 0.15
-  mat.roughness = 0.72
-  mat.metalnessMap = null
-  mat.roughnessMap = null
-  mat.normalMap = null
-
-  mat.emissive.set('#000000')
-  mat.emissiveIntensity = 0
-
-  if ('envMapIntensity' in mat) mat.envMapIntensity = 0.35
-  if ('specularIntensity' in mat) mat.specularIntensity = 0.08
-
-  mat.needsUpdate = true
-}
+/*
+ * LEGACY DRAWER PLAQUE MATERIAL STYLE — временно отключён.
+ * function tunePlaqueMaterial(mat) {
+ *   if (!mat.isMeshStandardMaterial && !mat.isMeshPhysicalMaterial) return
+ *   if (mat.map) mat.color.set('#ffffff')
+ *   mat.metalness = 0.15
+ *   mat.roughness = 0.72
+ *   mat.metalnessMap = null
+ *   mat.roughnessMap = null
+ *   mat.normalMap = null
+ *   mat.emissive.set('#000000')
+ *   mat.emissiveIntensity = 0
+ *   if ('envMapIntensity' in mat) mat.envMapIntensity = 0.35
+ *   if ('specularIntensity' in mat) mat.specularIntensity = 0.08
+ *   mat.needsUpdate = true
+ * }
+ */
 
 export function applyBerestaMaterialFixups(root) {
   shareBerestaMaterialsByName(root)
@@ -656,8 +656,8 @@ export function applyCopperMaterialFixups(root) {
     if (!child.isMesh || !child.material) return
     const materials = Array.isArray(child.material) ? child.material : [child.material]
     materials.forEach((mat) => {
-      if (isPlaqueMaterial(mat)) tunePlaqueMaterial(mat)
-      else if (isBrassHandleMaterial(mat)) tuneBrassHandleMaterial(mat, child.name)
+      // if (isPlaqueMaterial(mat)) tunePlaqueMaterial(mat) // legacy plaques disabled
+      if (isBrassHandleMaterial(mat)) tuneBrassHandleMaterial(mat, child.name)
       else if (isRimOrHandleHighlightMaterial(mat)) tuneRimAndHandleHighlightMaterial(mat)
     })
   })

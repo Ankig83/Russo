@@ -9,6 +9,9 @@ import { drawerSections } from '../../constants/sections'
 import {
   SHKAF_MODEL_PATH,
   SHKAF_LEGS_MODEL_PATH,
+  SHKAF_BACKWALL_MODEL_PATH,
+  SHKAF_CLOSED_DOORS_PATH,
+  SHKAF_LEATHER_RIM_PATH,
   SHKAF_NODE_MAP,
   SHKAF_ROOT_NAME,
   HIDE_SCENE_DECOR,
@@ -20,6 +23,13 @@ import {
   DRAWER_TABL_NODES,
   GLB_LEG_NODES,
   USE_PROCEDURAL_LEGS,
+  USE_BAKED_LEGS,
+  BAKED_LEG_HIDE_NODES,
+  USE_ATTACH_BACKWALL,
+  USE_ATTACH_LEATHER_RIM,
+  USE_CLOSED_DOORS_FACADE,
+  USE_AI_DOOR_TEXTURES,
+  CLOSED_DOORS_NODE_NAME,
 } from '../../constants/shkafNodes'
 import CabinetLegs from './CabinetLegs'
 import {
@@ -33,9 +43,12 @@ import {
 } from '../../constants/shkaf'
 import { useShkafStore } from '../../store/shkafStore'
 import FitCamera from './FitCamera'
-import { USE_STUDIO_CAMERA, USE_HDRI_ONLY, LIGHT_LAYERS, getEffectiveSplitCorpusLight, STUDIO } from '../../constants/studioScene'
+import { USE_STUDIO_CAMERA, LIGHT_LAYERS, STUDIO } from '../../constants/studioScene'
 import { getCabinetPlacement, findByName } from '../../utils/cabinetBounds'
 import { attachGlbLegs } from '../../utils/attachGlbLegs'
+import { attachGlbBackwall } from '../../utils/attachGlbBackwall'
+import { attachClosedDoorsFacade, openBerestaSeamGap, setClosedDoorsLook } from '../../utils/attachClosedDoors'
+import { attachLeatherRims } from '../../utils/attachLeatherRim'
 import {
   findDrawerFromIntersections,
   getDrawerBodyName,
@@ -47,87 +60,20 @@ import {
   russoLog,
   describeHitObject,
 } from '../../utils/russoLog'
-import { USE_RAW_GLB_MATERIALS } from '../../constants/studioScene'
+import { USE_RAW_GLB_MATERIALS, USE_WOOD_DOORS, USE_BRONZE_METAL } from '../../constants/studioScene'
 import { applyDoorPanelPatinaTextures, loadPatinaTextures } from '../../utils/patinaTextures'
+import { applyWoodDoorMaterials, createInnerDoorWoodMaterial, ensureWoodUv2, loadWoodTextures } from '../../utils/woodTextures'
+import {
+  applyAiDoorFacadeTextures,
+  extractAiDoorTexturesFromFacade,
+} from '../../utils/aiDoorTextures'
+import { applyBronzeMetalMaterials, loadBronzeTextures } from '../../utils/bronzeTextures'
+import { applyLeatherAccentMaterials, loadLeatherTextures } from '../../utils/leatherTextures'
 import {
   applyRawMaterialPipeline,
   applyStudioMaterialFixups,
   isBerestaMaterial,
 } from '../../utils/materialFixups'
-
-const HOVER_NUDGE = 0.032
-const HOVER_WIGGLE_DURATION = 0.45
-const HOVER_EMISSIVE = '#c9a040'
-const HOVER_EMISSIVE_INTENSITY = 0.32
-
-/** Ящики без анимации выдвижения при hover — только подсветка */
-const HOVER_HIGHLIGHT_ONLY = new Set()
-
-/** Свет внутри шкафа должен доставать до обоих слоёв (двери + медный корпус) */
-function enableBothLightLayers(light) {
-  if (!light) return
-  light.layers.enable(LIGHT_LAYERS.doors)
-  if (getEffectiveSplitCorpusLight()) light.layers.enable(LIGHT_LAYERS.corpus)
-}
-
-/**
- * Внутренний спот шкафа — мягкий верхний акцент (лёгкая тень под полками).
- * При split corpus light светит на оба слоя.
- */
-function InteriorSpot({ position, target, intensity, castShadow, distance }) {
-  const ref = useRef(null)
-
-  useEffect(() => {
-    enableBothLightLayers(ref.current)
-  }, [])
-
-  return (
-    <spotLight
-      ref={ref}
-      position={position}
-      color="#ffcf8a"
-      intensity={intensity}
-      angle={0.95}
-      penumbra={1}
-      distance={distance}
-      decay={2}
-      castShadow={castShadow}
-      shadow-mapSize={castShadow ? 512 : undefined}
-      shadow-bias={castShadow ? -0.00008 : undefined}
-      shadow-camera-near={castShadow ? 0.08 : undefined}
-      shadow-camera-far={castShadow ? distance : undefined}
-    >
-      <object3D attach="target" position={target} />
-    </spotLight>
-  )
-}
-
-/**
- * Тёплый заполняющий омни-свет внутри шкафа (как soft-свет в Blender при
- * открытии дверей). Point light светит во все стороны — заливает заднюю
- * стенку, бока, полки и пол, а не только пятно под потолком.
- */
-function InteriorFill({ position, intensity, distance }) {
-  const ref = useRef(null)
-
-  useEffect(() => {
-    enableBothLightLayers(ref.current)
-  }, [])
-
-  return (
-    <pointLight
-      ref={ref}
-      position={position}
-      color="#ffd9a6"
-      intensity={intensity}
-      distance={distance}
-      decay={2}
-    />
-  )
-}
-
-/** Имена нод-табличек — не подсвечивать при hover */
-const TABL_NODE_NAMES = new Set(Object.values(DRAWER_TABL_NODES))
 
 /** Парные узлы (крышка ↔ корпус) */
 const PAIRED_DRAWER_NODES = new Set(Object.keys(DRAWER_LID_TO_BODY))
@@ -147,33 +93,87 @@ function ensureUniqueMaterials(root) {
   })
 }
 
-function isUnderInactiveDrawerNode(object) {
-  let current = object
-  while (current) {
-    if (INACTIVE_DRAWER_NODES.has(current.name)) return true
-    if (INACTIVE_MESH_NAMES.has(current.name)) return true
-    current = current.parent
-  }
-  return false
-}
-
 const _pullDir = new THREE.Vector3()
 const _parentMatrix = new THREE.Matrix4()
 
 const INNER_DOOR_BACKFACE_SUFFIX = '__inner_copper_backface'
+
+/** Полотна дверей: mesh с patina_PBR под pivot, либо сам pivot как mesh (shkaf_for_D) */
+function findDoorPanelMeshes(door) {
+  if (!door) return []
+  const panels = []
+  const isPanelMaterial = (mat) =>
+    mat?.name === 'patina_PBR'
+    || mat?.name === 'Dark_Metal_Frame'
+    || mat?.name === 'Material.002'
+    || /^M_AiDoor_/i.test(mat?.name || '')
+
+  if (door.isMesh && door.material) {
+    const materials = Array.isArray(door.material) ? door.material : [door.material]
+    if (materials.some(isPanelMaterial)) panels.push(door)
+  }
+
+  door.traverse((child) => {
+    if (!child.isMesh || !child.material || child === door) return
+    if (String(child.name).includes(INNER_DOOR_BACKFACE_SUFFIX)) return
+    const materials = Array.isArray(child.material) ? child.material : [child.material]
+    if (materials.some((mat) => mat?.name === 'patina_PBR')) panels.push(child)
+  })
+  return panels
+}
+
 function createInnerDoorCopperMaterial(sourceMaterial) {
   const source = Array.isArray(sourceMaterial) ? sourceMaterial[0] : sourceMaterial
   const material = source?.clone?.() ?? new THREE.MeshStandardMaterial({ name: 'Material.002' })
 
-  // Внутренняя сторона дверей должна совпадать с медью корпуса shkaf (Material.002),
-  // но рендериться только с обратной стороны существующей геометрии дверки.
+  // Внутренняя сторона дверей — BackSide-клон полотна (pivot door_* теперь Empty / Mesh).
   material.side = THREE.BackSide
   material.polygonOffset = true
   material.polygonOffsetFactor = -1
   material.polygonOffsetUnits = -1
+  material.transparent = false
+  material.opacity = 1
+  material.depthWrite = true
   material.needsUpdate = true
 
   return material
+}
+
+/**
+ * В shkaf_for_D.glb корпус/двери ошибочно сидят на Dark_Metal_Frame (материал базы).
+ * Клонируем и переименовываем в Material.002 — чтобы сработал woodTextures pipeline.
+ * Table_Top_Frame остаётся на Dark_Metal_Frame.
+ */
+function remapDarkMetalCorpusToWoodAlias(model) {
+  // При AI-текстуре дверей не трогаем door_* — на них повесим doors-ai maps.
+  const corpusMeshes = USE_AI_DOOR_TEXTURES
+    ? new Set(['shkaf'])
+    : new Set(['shkaf', 'door_left', 'door_right'])
+  model.traverse((child) => {
+    if (!child.isMesh || !corpusMeshes.has(child.name)) return
+    const remap = (mat) => {
+      if (!mat || mat.name !== 'Dark_Metal_Frame') return mat
+      const clone = mat.clone()
+      clone.name = 'Material.002'
+      clone.needsUpdate = true
+      return clone
+    }
+    child.material = Array.isArray(child.material)
+      ? child.material.map(remap)
+      : remap(child.material)
+  })
+}
+
+function setInnerDoorBackfacesVisible(model, visible) {
+  ;(['left', 'right']).forEach((side) => {
+    const door = findDoorPivotNode(model, side)
+    if (!door) return
+    door.traverse((child) => {
+      if (child.isMesh && String(child.name).includes(INNER_DOOR_BACKFACE_SUFFIX)) {
+        child.visible = visible
+      }
+    })
+  })
 }
 
 function createWarmRivetMaterial(name = 'warm_dark_brass_rivet', { rim = false } = {}) {
@@ -188,14 +188,6 @@ function createWarmRivetMaterial(name = 'warm_dark_brass_rivet', { rim = false }
     specularIntensity: rim ? 0.12 : 0.18,
     specularColor: '#e8c878',
     side: THREE.DoubleSide,
-  })
-}
-
-function setInnerDoorBackfacesVisible(model, visible) {
-  ;(['left', 'right']).forEach((side) => {
-    const door = findDoorPivotNode(model, side)
-    const innerFace = door?.getObjectByName(`${door.name}${INNER_DOOR_BACKFACE_SUFFIX}`)
-    if (innerFace) innerFace.visible = visible
   })
 }
 
@@ -432,24 +424,6 @@ function getPairedDrawerName(name) {
   return getDrawerBodyName(name) ?? name
 }
 
-/** Для секций, привязанных к корпусу (.1), анимировать крышку + корпус */
-function resolveDrawerMainName(nodeName) {
-  const lid = Object.entries(DRAWER_LID_TO_BODY).find(([, body]) => body === nodeName)?.[0]
-  if (lid) return lid
-  return nodeName.endsWith('.1') ? nodeName.slice(0, -2) : nodeName
-}
-
-function getDrawerNodes(model, sectionId) {
-  const nodeName = SHKAF_NODE_MAP[sectionId]
-  if (!nodeName) return []
-  const mainName = resolveDrawerMainName(nodeName)
-  const main = model.getObjectByName(mainName)
-  if (!main) return []
-  if (!PAIRED_DRAWER_NODES.has(mainName)) return [main]
-  const paired = model.getObjectByName(getPairedDrawerName(mainName))
-  return paired ? [main, paired] : [main]
-}
-
 function getPullDirection(node) {
   node.updateWorldMatrix(true, false)
   _pullDir.set(0, 0, 1)
@@ -502,21 +476,38 @@ function attachCabinetSceneRoots(model) {
 
   ;(['left', 'right']).forEach((side) => {
     const door = findDoorPivotNode(model, side)
-    if (!door?.isMesh || door.getObjectByName(`${door.name}${INNER_DOOR_BACKFACE_SUFFIX}`)) {
-      return
-    }
+    if (!door) return
 
-    const innerFace = new THREE.Mesh(
-      door.geometry,
-      createInnerDoorCopperMaterial(shkafRoot.material),
-    )
-    innerFace.name = `${door.name}${INNER_DOOR_BACKFACE_SUFFIX}`
-    innerFace.raycast = () => null
-    innerFace.castShadow = false
-    innerFace.receiveShadow = true
-    innerFace.renderOrder = 1
-    innerFace.visible = false
-    door.add(innerFace)
+    // Полотно — дочерний mesh с patina_PBR (pivot door_* = Empty, не Mesh)
+    findDoorPanelMeshes(door).forEach((panel, index) => {
+      const innerName = `${door.name}${INNER_DOOR_BACKFACE_SUFFIX}_${index}`
+      if (door.getObjectByName(innerName) || panel.getObjectByName(innerName)) return
+
+      const innerFace = new THREE.Mesh(
+        panel.geometry,
+        createInnerDoorCopperMaterial(panel.material),
+      )
+      innerFace.name = innerName
+      innerFace.raycast = () => null
+      innerFace.castShadow = false
+      innerFace.receiveShadow = true
+      innerFace.renderOrder = 1
+      // Виден при открытых дверях — изнанка полотна
+      innerFace.visible = false
+      panel.add(innerFace)
+
+      // Снаружи и изнанка — DoubleSide (pivot Empty, backface-клон как страховка)
+      const mats = Array.isArray(panel.material) ? panel.material : [panel.material]
+      mats.forEach((mat) => {
+        if (!mat) return
+        mat.side = THREE.DoubleSide
+        mat.transparent = false
+        mat.opacity = 1
+        mat.depthWrite = true
+        mat.needsUpdate = true
+      })
+      panel.visible = true
+    })
   })
 }
 
@@ -558,6 +549,38 @@ function ensureDoorDetailShadows(model) {
   })
 }
 
+const ACCENT_LIGHT_RE = /leg_|ручка|заклеп|rivet|circle|bezier/i
+const ACCENT_MATERIAL_RE = /bronze|brass|scratched copper|material\.001/i
+const INTERIOR_LIGHT_RE = /drawer|tabl_|inside|inner|interior|внутр|door_back/i
+const INTERIOR_MATERIAL_RE = /inside|inner|berestf_insige|door_back/i
+
+function lineageName(object) {
+  const names = []
+  let current = object
+  while (current && names.length < 5) {
+    names.push(current.name ?? '')
+    current = current.parent
+  }
+  return names.join(' ')
+}
+
+/** Дополнительные light-layers не меняют видимость или материалы мешей. */
+function applyProductLightLayers(model) {
+  model.traverse((child) => {
+    if (!child.isMesh) return
+    const names = lineageName(child)
+    const materials = Array.isArray(child.material) ? child.material : [child.material]
+    const materialNames = materials.map((mat) => mat?.name ?? '').join(' ')
+
+    if (ACCENT_LIGHT_RE.test(names) || ACCENT_MATERIAL_RE.test(materialNames)) {
+      child.layers.enable(LIGHT_LAYERS.accent)
+    }
+    if (INTERIOR_LIGHT_RE.test(names) || INTERIOR_MATERIAL_RE.test(materialNames)) {
+      child.layers.enable(LIGHT_LAYERS.interior)
+    }
+  })
+}
+
 function finalizeShkafSceneGraph(model) {
   addMedallionRivets(model)
   tuneHandleRivets(model)
@@ -570,8 +593,30 @@ function finalizeShkafSceneGraph(model) {
     })
   })
 
-  // Старые ножки в shkaf.glb — убираем; новые вешает attachGlbLegs до placement
-  if (!USE_PROCEDURAL_LEGS) {
+  // Ножки: baked Table_Top_Frame оставляем; старые X (model*) прячем.
+  // При отдельном shkaf-legs.glb — снимаем leg_* до attachGlbLegs.
+  if (USE_BAKED_LEGS) {
+    BAKED_LEG_HIDE_NODES.forEach((name) => {
+      const node = model.getObjectByName(name)
+      if (!node) return
+      node.visible = false
+      node.traverse((child) => {
+        child.visible = false
+        child.raycast = () => null
+      })
+    })
+    GLB_LEG_NODES.forEach((name) => {
+      const leg = model.getObjectByName(name)
+      if (!leg) return
+      leg.raycast = () => null
+      leg.traverse((child) => {
+        if (!child.isMesh) return
+        child.raycast = () => null
+        child.castShadow = true
+        child.receiveShadow = true
+      })
+    })
+  } else if (!USE_PROCEDURAL_LEGS) {
     GLB_LEG_NODES.forEach((name) => {
       const node = model.getObjectByName(name)
       node?.parent?.remove(node)
@@ -605,19 +650,32 @@ function finalizeShkafSceneGraph(model) {
     })
   })
 
-  // tabl_* → к своему фронту; кликабельны и табличка, и drawer_tl/tr/bl/br
-  Object.entries(DRAWER_TABL_NODES).forEach(([sectionId, tablName]) => {
-    const drawer = model.getObjectByName(SHKAF_NODE_MAP[sectionId])
+  /*
+   * LEGACY DRAWER PLAQUES — временно отключены.
+   * Чтобы вернуть таблички, раскомментировать блок и удалить hide-guard ниже.
+   *
+   * Object.entries(DRAWER_TABL_NODES).forEach(([sectionId, tablName]) => {
+   *   const drawer = model.getObjectByName(SHKAF_NODE_MAP[sectionId])
+   *   const tabl = model.getObjectByName(tablName)
+   *   if (!drawer || !tabl) return
+   *
+   *   drawer.attach(tabl)
+   *   tabl.traverse((child) => {
+   *     if (child.isMesh) {
+   *       child.castShadow = true
+   *       child.receiveShadow = true
+   *       child.renderOrder = 3
+   *     }
+   *   })
+   * })
+   */
+  Object.values(DRAWER_TABL_NODES).forEach((tablName) => {
     const tabl = model.getObjectByName(tablName)
-    if (!drawer || !tabl) return
-
-    drawer.attach(tabl)
+    if (!tabl) return
+    tabl.visible = false
     tabl.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = true
-        child.receiveShadow = true
-        child.renderOrder = 3
-      }
+      child.visible = false
+      child.raycast = () => null
     })
   })
 
@@ -650,7 +708,17 @@ function finalizeShkafSceneGraph(model) {
 
 function Shkaf({ sceneScale = 1 }) {
   const { scene } = useGLTF(SHKAF_MODEL_PATH)
-  const { scene: legsScene } = useGLTF(SHKAF_LEGS_MODEL_PATH)
+  const { scene: backwallScene } = useGLTF(SHKAF_BACKWALL_MODEL_PATH)
+  // Ножки / heavy facade — только если реально нужны (иначе dummy = backwall, без лишнего fetch)
+  const { scene: legsScene } = useGLTF(
+    !USE_BAKED_LEGS && !USE_PROCEDURAL_LEGS ? SHKAF_LEGS_MODEL_PATH : SHKAF_BACKWALL_MODEL_PATH,
+  )
+  const { scene: closedDoorsScene } = useGLTF(
+    USE_CLOSED_DOORS_FACADE ? SHKAF_CLOSED_DOORS_PATH : SHKAF_BACKWALL_MODEL_PATH,
+  )
+  const { scene: leatherRimScene } = useGLTF(
+    USE_ATTACH_LEATHER_RIM ? SHKAF_LEATHER_RIM_PATH : SHKAF_BACKWALL_MODEL_PATH,
+  )
   const { gl, camera } = useThree()
   const isMobile = useIsMobile()
   const dragThresholdPx = isMobile ? DRAG_THRESHOLD_MOBILE_PX : DRAG_THRESHOLD_DESKTOP_PX
@@ -659,37 +727,69 @@ function Shkaf({ sceneScale = 1 }) {
   const rightDoorRef = useRef()
   const closedRotations = useRef({ left: 0, right: 0 })
   const hoveredDrawerId = useRef(null)
-  const hoverTweens = useRef([])
-  const meshMaterialBackup = useRef(new Map())
-  const drawerBasePositions = useRef(new Map())
   const doorTimelineRef = useRef(null)
   const drawerTimelineRef = useRef(null)
   const navTimerRef = useRef(null)
   const navigate = useNavigate()
 
-  const { doorsOpen, animating, activeDrawerId, setDoorsOpen, setAnimating, setActiveDrawerId } =
-    useShkafStore()
+  const {
+    doorsOpen,
+    animating,
+    activeDrawerId,
+    setDoorsOpen,
+    setAnimating,
+    setActiveDrawerId,
+    setHoveredSectionId,
+  } = useShkafStore()
 
   const model = useMemo(() => {
     const cloned = scene.clone(true)
+    if (USE_ATTACH_BACKWALL) {
+      attachGlbBackwall(cloned, backwallScene)
+    }
     attachCabinetSceneRoots(cloned)
     hideSceneDecor(cloned)
     if (USE_RAW_GLB_MATERIALS) {
       applyRawMaterialPipeline(cloned)
       finalizeShkafSceneGraph(cloned)
-      if (!USE_PROCEDURAL_LEGS) {
+      if (!USE_PROCEDURAL_LEGS && !USE_BAKED_LEGS) {
         attachGlbLegs(cloned, legsScene)
       }
+      remapDarkMetalCorpusToWoodAlias(cloned)
+      applyProductLightLayers(cloned)
+    }
+    if (USE_CLOSED_DOORS_FACADE) {
+      const facade = attachClosedDoorsFacade(cloned, closedDoorsScene)
+      setClosedDoorsLook(cloned, facade, true)
+      // Те же карты, что на AI-фасаде — на open door_* (без второго HTTP)
+      if (USE_AI_DOOR_TEXTURES) {
+        const aiMaps = extractAiDoorTexturesFromFacade(facade)
+        if (aiMaps) applyAiDoorFacadeTextures(cloned, aiMaps)
+      }
+    } else if (USE_AI_DOOR_TEXTURES) {
+      russoLog('warn', 'mat', 'USE_AI_DOOR_TEXTURES без facade — skip')
+    }
+    // Шов фаски на рабочих Beresta_* (на фасаде уже в attachClosedDoors)
+    ;(['left', 'right']).forEach((side) => {
+      openBerestaSeamGap(findDoorPivotNode(cloned, side))
+    })
+    if (USE_ATTACH_LEATHER_RIM) {
+      const n = attachLeatherRims(cloned, leatherRimScene)
+      russoLog('info', 'mat', `leather rim: ${n} halves`)
     }
     return cloned
-  }, [scene, legsScene])
+  }, [scene, legsScene, backwallScene, closedDoorsScene, leatherRimScene])
+
+  const closedDoorsFacade = useMemo(
+    () => (USE_CLOSED_DOORS_FACADE ? model.getObjectByName(CLOSED_DOORS_NODE_NAME) : null),
+    [model],
+  )
   const shkafGroup = useMemo(() => findByName(model, SHKAF_ROOT_NAME), [model])
   const alignOffset = STUDIO.object.alignOffset ?? [0, 0, 0]
-  const { position: placement, alignedCenter, size, box } = useMemo(
+  const { position: placement } = useMemo(
     () => getCabinetPlacement(model, SHKAF_ROOT_NAME),
     [model],
   )
-  const center = alignedCenter
 
   const scenePrepared = useRef(null)
   useEffect(() => {
@@ -698,6 +798,9 @@ function Shkaf({ sceneScale = 1 }) {
     let cancelled = false
 
     const prepare = async () => {
+      if (USE_ATTACH_BACKWALL) {
+        attachGlbBackwall(model, backwallScene)
+      }
       attachCabinetSceneRoots(model)
       hideSceneDecor(model)
       ensureUniqueMaterials(model)
@@ -715,10 +818,85 @@ function Shkaf({ sceneScale = 1 }) {
 
       applyStudioMaterialFixups(model)
       finalizeShkafSceneGraph(model)
+      applyProductLightLayers(model)
       scenePrepared.current = model.uuid
     }
 
     prepare()
+    return () => {
+      cancelled = true
+    }
+  }, [model, backwallScene])
+
+  // Тёмное дерево на корпус + полотна дверей (когда нет AI texture transfer)
+  useEffect(() => {
+    if (!USE_WOOD_DOORS || !model) return undefined
+    let cancelled = false
+    loadWoodTextures()
+      .then((tex) => {
+        if (cancelled) return
+        const n = applyWoodDoorMaterials(model, tex)
+        if (!USE_AI_DOOR_TEXTURES) {
+          const innerMat = createInnerDoorWoodMaterial(tex)
+          ;(['left', 'right']).forEach((side) => {
+            const door = findDoorPivotNode(model, side)
+            findDoorPanelMeshes(door).forEach((panel) => {
+              panel.visible = true
+              panel.traverse((child) => {
+                if (!child.isMesh) return
+                if (!String(child.name).includes(INNER_DOOR_BACKFACE_SUFFIX)) return
+                child.material = innerMat
+                ensureWoodUv2(child)
+                child.material.side = THREE.BackSide
+                child.material.transparent = false
+                child.material.opacity = 1
+                child.material.depthWrite = true
+                child.material.needsUpdate = true
+              })
+            })
+          })
+        }
+        russoLog('info', 'mat', `dark-wood-stain: ${n} slots`)
+      })
+      .catch((err) => {
+        console.warn('РУССО: wood textures not loaded', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [model])
+
+  // Бронза только на ножки (после attachGlbLegs)
+  useEffect(() => {
+    if (!USE_BRONZE_METAL || !model) return undefined
+    let cancelled = false
+    loadBronzeTextures()
+      .then((tex) => {
+        if (cancelled) return
+        const { legs } = applyBronzeMetalMaterials(model, tex)
+        russoLog('info', 'mat', `bronze: legs=${legs}`)
+      })
+      .catch((err) => {
+        console.warn('РУССО: bronze textures not loaded', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [model])
+
+  // Кожа на ободке + ручках (facade и door_*) — grain вместо пластика Material.001
+  useEffect(() => {
+    if (!model) return undefined
+    let cancelled = false
+    loadLeatherTextures()
+      .then((tex) => {
+        if (cancelled) return
+        const n = applyLeatherAccentMaterials(model, tex)
+        russoLog('info', 'mat', `leather accents: ${n}`)
+      })
+      .catch((err) => {
+        console.warn('РУССО: leather textures not loaded', err)
+      })
     return () => {
       cancelled = true
     }
@@ -750,21 +928,20 @@ function Shkaf({ sceneScale = 1 }) {
     const drawers = drawerSections.map((s) => {
       const nodeName = SHKAF_NODE_MAP[s.id]
       const node = model.getObjectByName(nodeName)
-      const tablName = DRAWER_TABL_NODES[s.id]
-      const tabl = tablName ? model.getObjectByName(tablName) : null
-      const tablMat = tabl?.isMesh
-        ? (Array.isArray(tabl.material) ? tabl.material[0] : tabl.material)?.name
-        : null
+      /*
+       * LEGACY PLAQUE DIAGNOSTICS — вернуть вместе с drawer plaques:
+       * const tablName = DRAWER_TABL_NODES[s.id]
+       * const tabl = tablName ? model.getObjectByName(tablName) : null
+       * const tablMat = tabl?.isMesh
+       *   ? (Array.isArray(tabl.material) ? tabl.material[0] : tabl.material)?.name
+       *   : null
+       */
       return {
         id: s.id,
         label: s.label,
         route: s.route,
         node: nodeName,
         nodeFound: !!node,
-        tabl: tablName,
-        tablFound: !!tabl,
-        tablParent: tabl?.parent?.name ?? null,
-        tablMaterial: tablMat,
       }
     })
 
@@ -779,6 +956,18 @@ function Shkaf({ sceneScale = 1 }) {
   useEffect(() => {
     russoInteractState({ doorsOpen, animating, activeDrawerId })
   }, [doorsOpen, animating, activeDrawerId])
+
+  // Закрыто → AI-фасад; открытие/открыто → рабочие door_left/door_right
+  useEffect(() => {
+    if (!USE_CLOSED_DOORS_FACADE) return
+    const useClosedFacade = !doorsOpen && !animating
+    setClosedDoorsLook(model, closedDoorsFacade, useClosedFacade)
+    russoLog(
+      'info',
+      'doors',
+      useClosedFacade ? 'closed facade ON (AI)' : 'closed facade OFF → real doors',
+    )
+  }, [doorsOpen, animating, model, closedDoorsFacade])
 
   const animateDoors = useCallback(
     (open) => {
@@ -850,107 +1039,21 @@ function Shkaf({ sceneScale = 1 }) {
     animateDoors(!doorsOpen)
   }, [doorsOpen, animateDoors])
 
-  const resetHoveredDrawerPositions = useCallback(() => {
-    if (!hoveredDrawerId.current) return
-    getDrawerNodes(model, hoveredDrawerId.current).forEach((node) => {
-      const base = drawerBasePositions.current.get(node.uuid)
-      if (base) node.position.copy(base)
-    })
-    drawerBasePositions.current.clear()
-  }, [model])
-
-  const restoreMeshMaterials = useCallback(() => {
-    meshMaterialBackup.current.forEach((original, mesh) => {
-      const originals = new Set(Array.isArray(original) ? original : [original])
-      const current = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-      current.forEach((material) => {
-        if (material && !originals.has(material)) material.dispose?.()
-      })
-      mesh.material = original
-    })
-    meshMaterialBackup.current.clear()
-  }, [])
-
-  const highlightDrawerMeshes = useCallback((nodes) => {
-    nodes.forEach((node) => {
-      node.traverse((child) => {
-        if (!child.isMesh) return
-        if (isUnderInactiveDrawerNode(child)) return
-        if (INACTIVE_MESH_NAMES.has(child.name)) return
-        if (TABL_NODE_NAMES.has(child.name)) return
-        let parent = child.parent
-        while (parent) {
-          if (TABL_NODE_NAMES.has(parent.name)) return
-          parent = parent.parent
-        }
-        if (meshMaterialBackup.current.has(child)) return
-
-        const original = child.material
-        meshMaterialBackup.current.set(child, original)
-
-        const applyHover = (mat) => {
-          if (!mat?.isMeshStandardMaterial && !mat?.isMeshPhysicalMaterial) return mat
-          const clone = mat.clone()
-          clone.emissive.set(HOVER_EMISSIVE)
-          clone.emissiveIntensity = HOVER_EMISSIVE_INTENSITY
-          return clone
-        }
-
-        child.material = Array.isArray(original)
-          ? original.map(applyHover)
-          : applyHover(original)
-      })
-    })
-  }, [])
-
   const clearDrawerHover = useCallback(() => {
-    hoverTweens.current.forEach((tween) => tween.kill())
-    hoverTweens.current = []
-    resetHoveredDrawerPositions()
-    restoreMeshMaterials()
-
+    if (!hoveredDrawerId.current) return
     hoveredDrawerId.current = null
+    setHoveredSectionId(null)
     document.body.style.cursor = 'auto'
-  }, [resetHoveredDrawerPositions, restoreMeshMaterials])
+  }, [setHoveredSectionId])
 
   const applyDrawerHover = useCallback(
     (sectionId) => {
       if (hoveredDrawerId.current === sectionId) return
-
-      hoverTweens.current.forEach((tween) => tween.kill())
-      hoverTweens.current = []
-      resetHoveredDrawerPositions()
-      restoreMeshMaterials()
-
       hoveredDrawerId.current = sectionId
-      const nodes = getDrawerNodes(model, sectionId)
-      const wiggle = !HOVER_HIGHLIGHT_ONLY.has(sectionId)
-
-      if (wiggle) {
-        nodes.forEach((node) => {
-          drawerBasePositions.current.set(node.uuid, node.position.clone())
-
-          const base = drawerBasePositions.current.get(node.uuid)
-          const pull = getPullDirection(node)
-
-          hoverTweens.current.push(
-            gsap.to(node.position, {
-              x: base.x + pull.x * HOVER_NUDGE,
-              y: base.y + pull.y * HOVER_NUDGE,
-              z: base.z + pull.z * HOVER_NUDGE,
-              duration: HOVER_WIGGLE_DURATION,
-              yoyo: true,
-              repeat: -1,
-              ease: 'sine.inOut',
-            }),
-          )
-        })
-      }
-
-      highlightDrawerMeshes(nodes)
+      setHoveredSectionId(sectionId)
       document.body.style.cursor = 'pointer'
     },
-    [model, resetHoveredDrawerPositions, restoreMeshMaterials, highlightDrawerMeshes],
+    [setHoveredSectionId],
   )
 
   useEffect(() => {
@@ -1007,11 +1110,10 @@ function Shkaf({ sceneScale = 1 }) {
       doorTimelineRef.current?.kill()
       drawerTimelineRef.current?.kill()
       if (navTimerRef.current) clearTimeout(navTimerRef.current)
-      hoverTweens.current.forEach((tween) => tween.kill())
-      restoreMeshMaterials()
+      setHoveredSectionId(null)
       document.body.style.cursor = 'auto'
     },
-    [restoreMeshMaterials],
+    [setHoveredSectionId],
   )
 
   const processTapFromHits = useCallback(
@@ -1173,44 +1275,6 @@ function Shkaf({ sceneScale = 1 }) {
     [isMobile, doorsOpen, applyDrawerHover, clearDrawerHover, model],
   )
 
-  // Подсветка с потолка шкафа — мягкий верхний акцент
-  const ceilingY = box.max.y - 0.06
-  const lightZ = center.z + size.z * 0.08
-  const targetY = center.y - size.y * 0.05
-  const lightDist = size.y * 1.8
-  const lightIntensity = doorsOpen ? 0.55 : 0
-  const INTERIOR_LIGHTS = [
-    { pos: [center.x - size.x * 0.28, ceilingY, lightZ], target: [center.x - size.x * 0.28, targetY, center.z], castShadow: false },
-    { pos: [center.x + size.x * 0.28, ceilingY, lightZ], target: [center.x + size.x * 0.28, targetY, center.z], castShadow: false },
-  ]
-
-  // Тёплый заполняющий свет — у задней стенки, разнесён по бокам.
-  // Центр не светим напрямую: иначе внутренняя береста выбивается горячим пятном.
-  const fillDist = size.y * 3.0
-  const fillIntensity = doorsOpen ? 1.35 : 0
-  const INTERIOR_FILLS = [
-    [center.x - size.x * 0.34, center.y + size.y * 0.02, center.z - size.z * 0.22],
-    [center.x + size.x * 0.34, center.y + size.y * 0.02, center.z - size.z * 0.22],
-  ]
-
-  // Фронтальные споты на ящики (их лицо смотрит наружу — fill изнутри не достаёт).
-  // Стоят спереди-сверху, в плоскости открытых дверей.
-  const drawerSpotDist = size.y * 2.2
-  const DRAWER_SPOTS = [
-    // нижний модуль — 4 плашки навигации
-    {
-      pos: [center.x, center.y + size.y * 0.02, box.max.z + size.z * 0.42],
-      target: [center.x, center.y - size.y * 0.36, center.z + size.z * 0.3],
-      intensity: doorsOpen ? 3.0 : 0,
-    },
-    // средние два ящика
-    {
-      pos: [center.x, center.y + size.y * 0.34, box.max.z + size.z * 0.42],
-      target: [center.x, center.y - size.y * 0.06, center.z + size.z * 0.3],
-      intensity: doorsOpen ? 2.6 : 0,
-    },
-  ]
-
   return (
     <group
       ref={rootRef}
@@ -1220,38 +1284,13 @@ function Shkaf({ sceneScale = 1 }) {
         placement[2] + alignOffset[2],
       ]}
     >
-      <primitive object={model} onPointerMove={handlePointerMove} />
+      <primitive
+        object={model}
+        onPointerMove={handlePointerMove}
+        onPointerOut={handlePointerMove}
+      />
 
       {USE_PROCEDURAL_LEGS && <CabinetLegs />}
-
-      {!USE_HDRI_ONLY &&
-        INTERIOR_LIGHTS.map(({ pos, target, castShadow: shadowOn }, i) => (
-          <InteriorSpot
-            key={i}
-            position={pos}
-            target={target}
-            intensity={lightIntensity}
-            castShadow={shadowOn}
-            distance={lightDist}
-          />
-        ))}
-
-      {!USE_HDRI_ONLY &&
-        INTERIOR_FILLS.map((pos, i) => (
-          <InteriorFill key={i} position={pos} intensity={fillIntensity} distance={fillDist} />
-        ))}
-
-      {!USE_HDRI_ONLY &&
-        DRAWER_SPOTS.map(({ pos, target, intensity }, i) => (
-          <InteriorSpot
-            key={i}
-            position={pos}
-            target={target}
-            intensity={intensity}
-            castShadow={false}
-            distance={drawerSpotDist}
-          />
-        ))}
 
       {!USE_STUDIO_CAMERA && (
         <FitCamera object={model} sceneScale={sceneScale} placement={placement} />

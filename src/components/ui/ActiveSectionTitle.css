@@ -1,0 +1,39 @@
+.active-section-title-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.active-section-title {
+  position: absolute;
+  top: 50%;
+  left: calc(50% + clamp(165px, 16vw, 280px));
+  max-width: min(38vw, 440px);
+  color: #f2f2f0;
+  font-family: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: clamp(28px, 2.25vw, 34px);
+  font-weight: 300;
+  line-height: 1.2;
+  letter-spacing: 0.055em;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 300ms ease;
+  white-space: nowrap;
+}
+
+.active-section-title--visible {
+  opacity: 1;
+}
+
+@media (hover: none), (max-width: 767px) {
+  .active-section-title-layer {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .active-section-title {
+    transition-duration: 0ms;
+  }
+}

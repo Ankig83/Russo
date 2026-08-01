@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from 'react'
 import { LIGHT_LAYERS, STUDIO } from '../../constants/studioScene'
 import { useStudioPerformance } from '../../hooks/useStudioPerformance'
 
-/** Directional + target: тени шкафа на пол, оба view-layer */
+/** Большой spot: перспективная мягкая тень на физическом полу и стенах. */
 export default function StudioShadowLight() {
   const lightRef = useRef(null)
   const targetRef = useRef(null)
@@ -19,35 +19,31 @@ export default function StudioShadowLight() {
     light.layers.enable(LIGHT_LAYERS.doors)
     light.layers.enable(LIGHT_LAYERS.corpus)
     light.shadow.radius = cfg.radius ?? 2
-  }, [cfg.radius])
+    light.shadow.blurSamples = cfg.blurSamples ?? 8
+    light.shadow.camera.near = cfg.camera.near
+    light.shadow.camera.far = cfg.camera.far
+    light.shadow.camera.updateProjectionMatrix()
+  }, [cfg.blurSamples, cfg.camera.far, cfg.camera.near, cfg.radius])
 
   if (!cfg) return null
 
   return (
     <>
       <object3D ref={targetRef} position={cfg.target} />
-      <directionalLight
+      <spotLight
         ref={lightRef}
         position={cfg.position}
         intensity={cfg.intensity}
         color={cfg.color}
+        angle={cfg.angle}
+        penumbra={cfg.penumbra}
+        distance={cfg.distance}
+        decay={cfg.decay}
         castShadow
         shadow-bias={cfg.bias}
         shadow-normalBias={cfg.normalBias}
         shadow-mapSize={[mapSize, mapSize]}
-      >
-        <orthographicCamera
-          attach="shadow-camera"
-          args={[
-            cfg.camera.left,
-            cfg.camera.right,
-            cfg.camera.top,
-            cfg.camera.bottom,
-            cfg.camera.near,
-            cfg.camera.far,
-          ]}
-        />
-      </directionalLight>
+      />
     </>
   )
 }

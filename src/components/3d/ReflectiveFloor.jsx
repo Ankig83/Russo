@@ -2,19 +2,31 @@ import * as THREE from 'three'
 import { MeshReflectorMaterial } from '@react-three/drei'
 import { HERO } from '../../constants/studioScene'
 
-/** Тёмный глянцевый пол + shadow catcher (MeshReflector плохо принимает shadow map) */
+/** Существующий floor превращён в низкую круглую платформу + отражающий верх */
 export default function ReflectiveFloor() {
   const { floor } = HERO
 
   return (
     <group>
       <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0, 0]}
         receiveShadow
         raycast={() => null}
       >
-        <planeGeometry args={[floor.size, floor.size]} />
+        <cylinderGeometry args={[floor.radius, floor.radius, floor.height, 96, 1, false]} />
+        <meshStandardMaterial
+          color={floor.color}
+          roughness={floor.roughness}
+          metalness={floor.metalness}
+        />
+      </mesh>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, floor.height * 0.5 + 0.002, 0]}
+        receiveShadow
+        raycast={() => null}
+      >
+        <circleGeometry args={[floor.radius, 96]} />
         <MeshReflectorMaterial
           resolution={floor.resolution}
           mirror={floor.mirror}
@@ -29,15 +41,6 @@ export default function ReflectiveFloor() {
           maxDepthThreshold={1.4}
           side={THREE.FrontSide}
         />
-      </mesh>
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.004, 0]}
-        receiveShadow
-        raycast={() => null}
-      >
-        <planeGeometry args={[floor.size, floor.size]} />
-        <shadowMaterial transparent opacity={0.5} color="#000000" />
       </mesh>
     </group>
   )
