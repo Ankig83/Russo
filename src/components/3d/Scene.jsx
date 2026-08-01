@@ -451,7 +451,7 @@ export default function Scene() {
 
         {USE_HERO_LOOK && <HeroBackdrop />}
         {!lightboxOnly && (!USE_HDRI_ONLY || refVoid) && <StudioLights />}
-        {!lightboxOnly && !refVoid && <StudioShadowLight />}
+        {(USE_HERO_LOOK || (!lightboxOnly && !refVoid)) && <StudioShadowLight />}
 
         <Suspense fallback={null}>
           {(!refVoid || REFERENCE_VOID.showBackdrop) && !USE_HERO_LOOK && <StudioBackdrop />}

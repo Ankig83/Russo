@@ -1,12 +1,12 @@
 import { useLayoutEffect, useRef } from 'react'
-import { LIGHT_LAYERS, STUDIO } from '../../constants/studioScene'
+import { HERO, LIGHT_LAYERS, STUDIO, USE_HERO_LOOK } from '../../constants/studioScene'
 import { useStudioPerformance } from '../../hooks/useStudioPerformance'
 
-/** Большой spot: перспективная мягкая тень на физическом полу и стенах. */
+/** Большой spot: перспективная мягкая тень на физическом полу. */
 export default function StudioShadowLight() {
   const lightRef = useRef(null)
   const targetRef = useRef(null)
-  const cfg = STUDIO.lights.shadow
+  const cfg = USE_HERO_LOOK && HERO.floorShadow ? HERO.floorShadow : STUDIO.lights.shadow
   const perf = useStudioPerformance()
   const mapSize = perf.shadowMapSize ?? cfg.mapSize
 
