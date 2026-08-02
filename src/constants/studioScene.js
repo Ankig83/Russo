@@ -67,52 +67,59 @@ export const HERO = {
     url: `${assetBase}HDRI/studio_small_08_2k.hdr?v=1`,
     preset: null,
     /** IBL только формирует микроблики; основной рисунок даёт key. */
-    intensity: 0.3,
+    intensity: 0.16,
   },
   /*
-   * PREV — gallery four-light (до catalog retune):
-   * keyLight: { color:'#fff6ed', temperature:5400, position:[-3.2,4.4,3.2],
-   *   aimAt:[0,1.35,0.05], width:4.8, height:5.6, closedIntensity:1.9, openIntensity:0.75 }
-   * rimLight: { color:'#fffaf7', temperature:6500, position:[2.4,3.0,-2.6],
-   *   aimAt:[0,1.45,0], width:1.2, height:4.0, intensity:0.18 }
-   * accentLight: { color:'#ffe0bd', temperature:4300, position:[2.1,2.0,2.6],
-   *   aimAt:[0,1.35,0.3], width:0.28, height:2.4, closedIntensity:0.9, openIntensity:0.4 }
-   * interiorLight: { color:'#ffc58f', temperature:2700, position:[0,2.25,0.05],
-   *   aimAt:[0,1.05,-0.2], width:1.25, height:0.18, closedIntensity:0, openIntensity:3.1 }
-   * fillLight: (не было)
-   * floor: { color:'#050505', radius:3.6, height:0.08, resolution:512, mirror:0.08,
-   *   blur:[320,120], mixBlur:1.4, mixStrength:0.16, roughness:0.88, metalness:0 }
+   * PREV — rect-area rig (до three-point retune):
+   * keyLight: { color:'#ffe3cc', position:[-3.4,4.1,4.4], aimAt:[0,1.28,0.02],
+   *   width:6.8, height:7.2, closedIntensity:1.12, openIntensity:0.62 }
+   * rimLight: { color:'#dce8ff', position:[1.2,4.0,-2.8], aimAt:[0,1.55,0],
+   *   width:1.6, height:3.6, intensity:0.1 }
+   * fillLight: { color:'#dce6f2', position:[3.4,2.4,3.6], aimAt:[0,1.25,0.05],
+   *   width:5.4, height:6.2, intensity:0.16 }
    */
-  /** Большой мягкий key: скользит по фактуре, не выбивает медь в белое. */
+  /**
+   * KEY — spot сбоку-сверху под ~45°. Именно spot, а не RectAreaLight:
+   * area-свет в three.js не умеет castShadow, поэтому ручки не давали тень
+   * на берестяной круг. Этот же источник рисует тень шкафа на полу.
+   */
   keyLight: {
-    color: '#ffe3cc',
-    temperature: 4000,
-    position: [-3.4, 4.1, 4.4],
-    aimAt: [0, 1.28, 0.02],
-    width: 6.8,
-    height: 7.2,
-    closedIntensity: 1.12,
-    openIntensity: 0.62,
+    color: '#fff4e0',
+    temperature: 4200,
+    position: [3.5, 4.3, 3.5],
+    aimAt: [0, 1.3, 0.05],
+    angle: 0.42,
+    penumbra: 1,
+    distance: 24,
+    decay: 1.4,
+    closedIntensity: 26,
+    openIntensity: 14,
+    shadow: {
+      mapSize: 2048,
+      radius: 6,
+      blurSamples: 20,
+      camera: { near: 0.5, far: 18 },
+      /** -0.0005 + normalBias 0.02 — убирает shadow acne (полосы на корпусе/полу) */
+      bias: -0.0005,
+      normalBias: 0.02,
+    },
   },
-  /** Cool rim ~5–10% key — силуэт сверху и по скруглениям */
+  /** RIM / contre-jour — spot сзади, холодный: отделяет корпус от чёрного фона */
   rimLight: {
-    color: '#dce8ff',
-    temperature: 6800,
-    position: [1.2, 4.0, -2.8],
-    aimAt: [0, 1.55, 0],
-    width: 1.6,
-    height: 3.6,
-    intensity: 0.1,
+    color: '#e0f4ff',
+    temperature: 7000,
+    position: [-2.7, 3.9, -3.0],
+    aimAt: [0.1, 1.85, 0.2],
+    angle: 0.34,
+    penumbra: 0.85,
+    distance: 20,
+    decay: 1.4,
+    intensity: 38,
   },
-  /** Холодный слабый fill: читает тени, но не создаёт второй засвет. */
+  /** FILL — ambient ~12% от key: поднимает глухие тени, не убивая контраст */
   fillLight: {
     color: '#dce6f2',
-    temperature: 6000,
-    position: [3.4, 2.4, 3.6],
-    aimAt: [0, 1.25, 0.05],
-    width: 5.4,
-    height: 6.2,
-    intensity: 0.16,
+    intensity: 0.045,
   },
   /** Узкий accent на латунь (рейки / ручки) */
   accentLight: {
@@ -144,25 +151,21 @@ export const HERO = {
     normalScale: 0.18,
     roughness: 1,
     metalness: 0,
-    falloff: { inner: 1.65, outer: 5.35 },
-    shadowOpacity: 0.58,
+    falloff: { inner: 1.15, outer: 3.9 },
+    shadowOpacity: 0.5,
   },
-  /** Spot для мягкой тени шкафа на бетоне */
-  floorShadow: {
-    position: [-3.6, 6.8, 4.5],
-    target: [0.05, 0.04, 0],
-    intensity: 7.5,
-    color: '#fff4ec',
-    angle: 0.92,
-    penumbra: 1,
-    distance: 22,
-    decay: 1.55,
-    mapSize: 2048,
-    radius: 7,
-    blurSamples: 20,
-    camera: { near: 0.35, far: 24 },
-    bias: -0.0001,
-    normalBias: 0.014,
+  /**
+   * Contact shadow под ножками — размывается по мере удаления от точки касания.
+   * Основную перспективную тень на полу даёт keyLight (spot, castShadow),
+   * поэтому отдельный shadow-spot в hero не нужен.
+   */
+  contactShadow: {
+    position: [0, 0.045, 0],
+    opacity: 0.34,
+    blur: 3.2,
+    far: 0.55,
+    scale: 5.2,
+    color: '#000000',
   },
   /** Hero post — мягче AO / контраст, чтобы тени не уходили в pure black */
   toneMappingExposure: 0.9,

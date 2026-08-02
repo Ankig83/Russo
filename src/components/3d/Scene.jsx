@@ -311,7 +311,9 @@ export default function Scene() {
   /** Нельзя резать maxDistance стартом — иначе зум/отдаление «мёртвые» */
   const maxOrbitDistance = Math.max(orbit.maxDistance ?? startDistance, startDistance)
   const object = STUDIO.object
-  const shadow = STUDIO.shadow
+  const shadow = USE_HERO_LOOK && HERO.contactShadow
+    ? { ...STUDIO.shadow, ...HERO.contactShadow }
+    : STUDIO.shadow
   const postprocessing = USE_HERO_LOOK && HERO.postprocessing
     ? { ...STUDIO.postprocessing, ...HERO.postprocessing }
     : refVoid
@@ -451,7 +453,8 @@ export default function Scene() {
 
         {USE_HERO_LOOK && <HeroBackdrop />}
         {!lightboxOnly && (!USE_HDRI_ONLY || refVoid) && <StudioLights />}
-        {(USE_HERO_LOOK || (!lightboxOnly && !refVoid)) && <StudioShadowLight />}
+        {/* В hero тень на пол рисует key-spot из HeroBackdrop — второй shadow-spot дал бы двойную тень */}
+        {!USE_HERO_LOOK && !lightboxOnly && !refVoid && <StudioShadowLight />}
 
         <Suspense fallback={null}>
           {(!refVoid || REFERENCE_VOID.showBackdrop) && !USE_HERO_LOOK && <StudioBackdrop />}
