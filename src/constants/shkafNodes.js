@@ -2,7 +2,7 @@ const assetBase = import.meta.env.BASE_URL
 
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
-export const SHKAF_MODEL_VERSION = '36'
+export const SHKAF_MODEL_VERSION = '44'
 export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
 
 /** Ножки model / model.001 из нового экспорта shkaf_.glb — НЕ сжимать meshopt (scale запечён в геометрию) */
@@ -12,44 +12,51 @@ export const SHKAF_LEGS_MODEL_PATH = `${assetBase}models/shkaf-legs.glb?v=${SHKA
 /** Задняя стенка Beck_W из предыдущего shkaf.glb (не попала в shkaf_for_D) */
 export const SHKAF_BACKWALL_MODEL_VERSION = '1'
 export const SHKAF_BACKWALL_MODEL_PATH = `${assetBase}models/shkaf-backwall.glb?v=${SHKAF_BACKWALL_MODEL_VERSION}`
-export const USE_ATTACH_BACKWALL = true
+/** false — Beck_W уже в основном GLB (v37+) */
+export const USE_ATTACH_BACKWALL = false
 
 /** Кожаный ободок вокруг берёсты (из старого shkaf — ОкружностьБезье + Leather Dark Brown) */
 export const SHKAF_LEATHER_RIM_VERSION = '1'
 export const SHKAF_LEATHER_RIM_PATH = `${assetBase}models/shkaf-leather-rim.glb?v=${SHKAF_LEATHER_RIM_VERSION}`
-export const USE_ATTACH_LEATHER_RIM = true
+/** false — ободки/ручки/заклёпки уже в основном GLB (v37+) */
+export const USE_ATTACH_LEATHER_RIM = false
 /**
  * Доводка ободка после аттача (геометрия плоская — морфим под торец/ширину).
  * widthScale 0.6 ≈ 5см → 3см по радиальной ширине ремешка.
  */
 export const LEATHER_RIM_FIT = {
   /** радиальная ширина ремешка относительно исходной */
-  widthScale: 0.6,
+  widthScale: 0.58,
   /** чуть снаружи края берёсты */
-  outerPad: 1.015,
+  outerPad: 1.018,
   /** глубина захода на торец (локальные ед. до поворота) */
-  edgeDepth: 0.02,
+  edgeDepth: 0.028,
   /** вытягивание к центру шва — перекрыть торец берёсты */
-  seamOverlap: 0.016,
+  seamOverlap: 0.018,
   /** зона шва от диаметра (x≈0), в которой наращиваем губу */
-  seamZone: 0.11,
-  /** вынос перед плоскостью берёсты */
-  frontZ: 0.003,
+  seamZone: 0.12,
+  /** вынос перед плоскостью берёсты — читается объём + тень */
+  frontZ: 0.005,
 }
 
 /** Детализация кожи — геометрия, не нарисованный слой. */
 export const LEATHER_HARDWARE = {
-  /** Мелкие заклёпки по каждой половине обода (×2). */
-  rimRivetsPerHalf: 28,
-  rimRivetRadius: 0.0062,
-  rimRivetRadialInset: 0.013,
-  /** Две крепёжные шайбы на концах каждой ручки. */
-  handleRivetRadius: 0.014,
-  handleRivetEndInset: 0.018,
-  color: '#a9773e',
-  roughness: 0.42,
-  metalness: 0.78,
-  env: 0.28,
+  /** Мелкие заклёпки по каждой половине обода (было 32 → ×1.875). */
+  rimRivetsPerHalf: 60,
+  /** Было 0.007 — минус 50% */
+  rimRivetRadius: 0.0035,
+  rimRivetRadialInset: 0.012,
+  rimWasherRadius: 0.005,
+  rimWasherHeight: 0.0008,
+  handleRivetRadius: 0.0075,
+  handleRivetEndInset: 0.01,
+  handleRivetFront: 0.0015,
+  /** Зазор спинки ручки от плоскости берёсты */
+  handleSeatGap: 0.0006,
+  color: '#b48445',
+  roughness: 0.34,
+  metalness: 0.86,
+  env: 0.4,
 }
 /**
  * Донастройка после attach на новый корпус (shkaf_for_D сдвинут по X ≈ +0.028).
@@ -92,6 +99,12 @@ export const BERESTA_SEAM_HALF_GAP = 0.012
  * false — подтягивать отдельно через attachGlbLegs(shkaf-legs.glb).
  */
 export const USE_BAKED_LEGS = true
+
+/**
+ * false — не клонировать dual-pair / медальон и не трогать сечение лент.
+ * Ножки = геометрия из shkaf.glb as-is.
+ */
+export const USE_RUNTIME_LEG_PIPELINE = false
 
 /** HDRI из GLB шкафа — не используем, сцена настраивается отдельно */
 export const USE_GLB_ENVIRONMENT = false
@@ -252,6 +265,8 @@ export const CABINET_SCENE_ROOTS = [
   'Beck_W',
   /** Новая база-∞ из shkaf_for_D.glb (вне shkaf в корне сцены) */
   'Table_Top_Frame',
+  /** Закрытый AI-фасад (baked в основной GLB) — иначе hideSceneDecor скроет */
+  'closed_doors_facade',
 ]
 
 /**
@@ -259,8 +274,8 @@ export const CABINET_SCENE_ROOTS = [
  * Старые leg_* в shkaf.glb заменяются в attachGlbLegs до placement.
  */
 export const GLB_LEG_NODES = USE_BAKED_LEGS
-  ? ['Table_Top_Frame']
-  : ['leg_front_o', 'leg_beck_o']
+  ? ['BézierCurve', 'BézierCurve.001', 'BézierCurve004', 'BézierCurve004.001', 'Table_Top_Frame']
+  : ['leg_front_o', 'leg_letter_o']
 /**
  * Позиции ножек на узле shkaf — из shkaf-legs.glb (геометрия центрирована в mesh,
  * в отличие от main shkaf.glb где offset вшит в вершины).

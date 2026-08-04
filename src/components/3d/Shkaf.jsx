@@ -24,6 +24,7 @@ import {
   GLB_LEG_NODES,
   USE_PROCEDURAL_LEGS,
   USE_BAKED_LEGS,
+  USE_RUNTIME_LEG_PIPELINE,
   BAKED_LEG_HIDE_NODES,
   USE_ATTACH_BACKWALL,
   USE_ATTACH_LEATHER_RIM,
@@ -69,6 +70,19 @@ import {
 } from '../../utils/aiDoorTextures'
 import { applyBronzeMetalMaterials, loadBronzeTextures } from '../../utils/bronzeTextures'
 import { applyLeatherAccentMaterials, loadLeatherTextures } from '../../utils/leatherTextures'
+import {
+  thickenBakedLegs,
+  collectRibbonLegMeshes,
+  ensureDualRibbonLegPairs,
+  fitLegsToCabinetWidth,
+} from '../../utils/legDetail'
+import {
+  loadLegMedallionTextures,
+  applyLegDirtyCopper,
+  attachLegMedallion,
+  removeLegMedallions,
+} from '../../utils/legMedallion'
+import { registerShkafGlbExporter } from '../../utils/exportShkafGlb'
 import {
   applyRawMaterialPipeline,
   applyStudioMaterialFixups,
@@ -142,15 +156,28 @@ function createInnerDoorCopperMaterial(sourceMaterial) {
 /**
  * В shkaf_for_D.glb корпус/двери ошибочно сидят на Dark_Metal_Frame (материал базы).
  * Клонируем и переименовываем в Material.002 — чтобы сработал woodTextures pipeline.
- * Table_Top_Frame остаётся на Dark_Metal_Frame.
+ * Ленты BézierCurve* не трогаем — на них отдельно doors-ai metal (legDetail).
  */
 function remapDarkMetalCorpusToWoodAlias(model) {
   // При AI-текстуре дверей не трогаем door_* — на них повесим doors-ai maps.
   const corpusMeshes = USE_AI_DOOR_TEXTURES
-    ? new Set(['shkaf'])
-    : new Set(['shkaf', 'door_left', 'door_right'])
+    ? new Set(['shkaf', 'Table_Top_Frame'])
+    : new Set(['shkaf', 'door_left', 'door_right', 'Table_Top_Frame'])
+
+  const isRibbonLeg = (mesh) => {
+    let node = mesh
+    while (node) {
+      const ascii = (node.name || '').normalize('NFD').replace(/\p{M}/gu, '')
+      if (/^BezierCurve(\.\d+)?$/i.test(ascii)) return true
+      node = node.parent
+    }
+    return false
+  }
+
   model.traverse((child) => {
-    if (!child.isMesh || !corpusMeshes.has(child.name)) return
+    if (!child.isMesh) return
+    if (isRibbonLeg(child)) return
+    if (!corpusMeshes.has(child.name)) return
     const remap = (mat) => {
       if (!mat || mat.name !== 'Dark_Metal_Frame') return mat
       const clone = mat.clone()
@@ -533,15 +560,18 @@ function hideSceneDecor(model) {
 
 function ensureDoorDetailShadows(model) {
   model.traverse((child) => {
-    if (!child.isMesh) return
+    if (!child.isMesh && !child.isInstancedMesh) return
     const name = child.name ?? ''
 
-    if (/ручка|заклепа/i.test(name) || name.startsWith('medallion_rivet')) {
+    if (
+      /ручка|заклепа|кож_обод|leather_|leg_cross_medallion/i.test(name)
+      || name.startsWith('medallion_rivet')
+    ) {
       child.castShadow = true
     }
 
     if (
-      /Beresta|door_left|door_right|BézierCircle|Circle|patina|ручка/i.test(name)
+      /Beresta|door_left|door_right|BézierCircle|Circle|patina|ручка|кож_обод|leather_|leg_cross_medallion/i.test(name)
       || name.startsWith('medallion_rivet')
     ) {
       child.receiveShadow = true
@@ -616,6 +646,13 @@ function finalizeShkafSceneGraph(model) {
         child.receiveShadow = true
       })
     })
+    const ribbon = collectRibbonLegMeshes(model)
+    // полный reshape — в useEffect после текстур (там же force по version)
+    russoLog(
+      'info',
+      'mat',
+      `legs ribbon meshes: ${ribbon.map((m) => m.name).join(', ') || 'none'}`,
+    )
   } else if (!USE_PROCEDURAL_LEGS) {
     GLB_LEG_NODES.forEach((name) => {
       const node = model.getObjectByName(name)
@@ -776,6 +813,8 @@ function Shkaf({ sceneScale = 1 }) {
     if (USE_ATTACH_LEATHER_RIM) {
       const n = attachLeatherRims(cloned, leatherRimScene)
       russoLog('info', 'mat', `leather rim: ${n} halves`)
+      // После аттача ободка/заклёпок — снова флаги теней (раньше прогон был до фасада)
+      ensureDoorDetailShadows(cloned)
     }
     return cloned
   }, [scene, legsScene, backwallScene, closedDoorsScene, leatherRimScene])
@@ -861,6 +900,60 @@ function Shkaf({ sceneScale = 1 }) {
       .catch((err) => {
         console.warn('РУССО: wood textures not loaded', err)
       })
+    return () => {
+      cancelled = true
+    }
+  }, [model])
+
+  // Dirty-copper / reshape / медальон — только если ножки ещё не запечены в GLB
+  useEffect(() => {
+    if (!USE_RUNTIME_LEG_PIPELINE || !model) return undefined
+    let cancelled = false
+    loadLegMedallionTextures()
+      .then((tex) => {
+        if (cancelled) return
+        // пересобрать сечение (version 7 = Extrude по spine)
+        collectRibbonLegMeshes(model, { pair: 'front' }).forEach((m) => {
+          delete m.userData.legReshapeVersion
+        })
+        const reshaped = thickenBakedLegs(model)
+        if (!reshaped) {
+          russoLog('warn', 'mat', 'legs reshape=0 — сделай Ctrl+F5')
+        }
+        const pairs = ensureDualRibbonLegPairs(model)
+        const fit = fitLegsToCabinetWidth(model)
+        const n = applyLegDirtyCopper(model, tex)
+        const medal = attachLegMedallion(model, tex)
+        russoLog(
+          'info',
+          'mat',
+          `legs sheet-metal: reshape=${reshaped} pairs=F${pairs.front.length}/B${pairs.back.length} fitX=${fit?.scaleX ?? 1} body=${fit?.bodyW}->legs ${fit?.legW}→${fit?.afterW} mats=${n}; medallion: ${medal ? 'ok' : 'skip'}`,
+        )
+        registerShkafGlbExporter(model)
+      })
+      .catch((err) => console.warn('РУССО: leg medallion textures not loaded', err))
+    return () => {
+      cancelled = true
+    }
+  }, [model])
+
+  // Ножки: геометрия из GLB + forge PBR (triplanar UV). Медальон — нет.
+  useEffect(() => {
+    if (!model || USE_RUNTIME_LEG_PIPELINE) return undefined
+    const removed = removeLegMedallions(model)
+    registerShkafGlbExporter(model)
+    let cancelled = false
+    loadLegMedallionTextures()
+      .then((tex) => {
+        if (cancelled) return
+        const n = applyLegDirtyCopper(model, tex)
+        russoLog(
+          'info',
+          'mat',
+          `legs forge PBR: ${n}; medallion removed: ${removed}`,
+        )
+      })
+      .catch((err) => console.warn('РУССО: leg forge textures not loaded', err))
     return () => {
       cancelled = true
     }

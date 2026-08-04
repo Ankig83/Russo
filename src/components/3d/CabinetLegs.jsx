@@ -17,8 +17,8 @@ const FOOT_R = 0.415
 const Z_FRONT = 0.179
 const Z_BACK = -0.262
 
-const PROFILE_W = 0.04
-const PROFILE_D = 0.02
+const PROFILE_W = 0.06
+const PROFILE_D = 0.06
 const FORGED_SEGMENTS = 34
 
 /** Выпуклость верхних/нижних плеч и прогиб нижней дуги (подогнано под GLB). */

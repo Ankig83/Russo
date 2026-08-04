@@ -102,7 +102,8 @@ function ensureUv(mesh) {
  */
 export function createLeatherMaterial(textures, kind = 'rim', name = 'M_Leather_Dark') {
   const isHandle = kind === 'handle'
-  const repeat = isHandle ? [1.35, 1.0] : [2.0, 0.9]
+  // Плотнее тайл — зерно кожи читается на крупном плане ободка/ручек
+  const repeat = isHandle ? [1.7, 1.25] : [2.6, 1.15]
   const mat = new THREE.MeshPhysicalMaterial({
     name,
     color: '#ffffff',
@@ -111,17 +112,17 @@ export function createLeatherMaterial(textures, kind = 'rim', name = 'M_Leather_
     // Исходная карта bump_reticular — grayscale height, а не tangent normal.
     // normalMap давал «пластиковые» неверные блики.
     bumpMap: cloneTiled(textures.normalMap, repeat),
-    bumpScale: isHandle ? 0.028 : 0.034,
+    bumpScale: isHandle ? 0.055 : 0.062,
     metalness: 0,
-    roughness: isHandle ? 0.86 : 0.9,
-    envMapIntensity: isHandle ? 0.1 : 0.08,
+    roughness: isHandle ? 0.84 : 0.88,
+    envMapIntensity: isHandle ? 0.12 : 0.1,
     clearcoat: 0,
-    sheen: isHandle ? 0.04 : 0.025,
-    sheenRoughness: 0.96,
+    sheen: isHandle ? 0.06 : 0.04,
+    sheenRoughness: 0.94,
     sheenColor: new THREE.Color('#4d2d20'),
     side: THREE.DoubleSide,
   })
-  if ('specularIntensity' in mat) mat.specularIntensity = isHandle ? 0.1 : 0.07
+  if ('specularIntensity' in mat) mat.specularIntensity = isHandle ? 0.14 : 0.1
   if ('specularColor' in mat) mat.specularColor.set('#6b4b38')
   return mat
 }

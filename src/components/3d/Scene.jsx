@@ -17,11 +17,12 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useStudioPerformance } from '../../hooks/useStudioPerformance'
 import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
 import { SCENE_BG_STYLE, SCENE_CANVAS_BG, TONE_MAPPING_EXPOSURE } from '../../constants/scene'
-import { STUDIO, getStudioCameraConfig, getStudioOrbitConfig, getStudioCameraStartDistance, DEBUG_LOG_CAMERA_POSITION, USE_HDRI_ONLY, LIGHT_LAYERS, USE_REFERENCE_VOID_LOOK, REFERENCE_VOID, USE_HERO_LOOK, HERO, HERO_LIGHTBOX_ONLY, getEffectiveSplitCorpusLight, USE_STUDIO_CAMERA } from '../../constants/studioScene'
+import { STUDIO, getStudioCameraConfig, getStudioOrbitConfig, getStudioCameraStartDistance, DEBUG_LOG_CAMERA_POSITION, USE_HDRI_ONLY, LIGHT_LAYERS, USE_REFERENCE_VOID_LOOK, REFERENCE_VOID, USE_HERO_LOOK, HERO, HERO_LIGHTBOX_ONLY, USE_NO_LIGHTS, getEffectiveSplitCorpusLight, USE_STUDIO_CAMERA } from '../../constants/studioScene'
 import { russoCanvasReady, russoLog, russoPatch } from '../../utils/russoLog'
 
 /** Gallery mode: только четыре источника HeroBackdrop */
 const lightboxOnly = USE_HERO_LOOK && HERO_LIGHTBOX_ONLY
+const noLights = USE_NO_LIGHTS
 
 /** Камера по умолчанию рендерит только layer 0 — без этого корпус (layer 1) невидим */
 function EnableViewLayers() {
@@ -29,9 +30,10 @@ function EnableViewLayers() {
 
   useEffect(() => {
     camera.layers.enable(LIGHT_LAYERS.doors)
-    if (getEffectiveSplitCorpusLight()) camera.layers.enable(LIGHT_LAYERS.corpus)
+    camera.layers.enable(LIGHT_LAYERS.corpus)
     camera.layers.enable(LIGHT_LAYERS.accent)
     camera.layers.enable(LIGHT_LAYERS.interior)
+    camera.layers.enable(LIGHT_LAYERS.floor)
   }, [camera])
 
   return null
@@ -75,10 +77,11 @@ function handleCanvasCreated({ gl, scene }) {
   gl.outputColorSpace = THREE.SRGBColorSpace
   gl.toneMapping = THREE.ACESFilmicToneMapping
   gl.toneMappingExposure = exposure
-  gl.shadowMap.enabled = !USE_REFERENCE_VOID_LOOK || REFERENCE_VOID.directionalShadow
+  gl.shadowMap.enabled = !USE_NO_LIGHTS
+    && (!USE_REFERENCE_VOID_LOOK || REFERENCE_VOID.directionalShadow)
   gl.shadowMap.type = THREE.PCFSoftShadowMap
   gl.dithering = true
-  if (USE_HERO_LOOK) scene.environment = null
+  scene.environment = null
   scene.background = new THREE.Color(bg)
   russoCanvasReady()
 }
@@ -176,6 +179,7 @@ function StudioOrbitLimits({ startTarget, limits, startDistance }) {
 
   useFrame(() => {
     if (!controls?.target || !limits) return
+    if (controls.enabled === false) return
 
     const [sx, sy, sz] = startTarget
     const { targetOffset, targetMinOffset, targetMaxOffset, minCameraY, maxCameraY } = limits
@@ -451,15 +455,15 @@ export default function Scene() {
         {DEBUG_LOG_CAMERA_POSITION && <LogStudioCameraStart />}
         <CameraHudTracker />
 
-        {USE_HERO_LOOK && <HeroBackdrop />}
-        {!lightboxOnly && (!USE_HDRI_ONLY || refVoid) && <StudioLights />}
+        {!noLights && USE_HERO_LOOK && <HeroBackdrop />}
+        {!noLights && !lightboxOnly && (!USE_HDRI_ONLY || refVoid) && <StudioLights />}
         {/* В hero тень на пол рисует key-spot из HeroBackdrop — второй shadow-spot дал бы двойную тень */}
-        {!USE_HERO_LOOK && !lightboxOnly && !refVoid && <StudioShadowLight />}
+        {!noLights && !USE_HERO_LOOK && !lightboxOnly && !refVoid && <StudioShadowLight />}
 
         <Suspense fallback={null}>
           {(!refVoid || REFERENCE_VOID.showBackdrop) && !USE_HERO_LOOK && <StudioBackdrop />}
           {/* Hero: IBL из HERO.env (фон чёрный). Studio: STUDIO.env. */}
-          {(USE_HERO_LOOK
+          {!noLights && (USE_HERO_LOOK
             ? Boolean(HERO.env)
             : (!lightboxOnly && (!refVoid || REFERENCE_VOID.showEnvironment))) && (
             <StudioEnvironment />
@@ -471,7 +475,9 @@ export default function Scene() {
           <group scale={scale} position={object.position}>
             <Shkaf sceneScale={scale} />
           </group>
-          {(!refVoid || REFERENCE_VOID.contactShadows) && (
+          {/* Hero: ContactShadows давал чёрный прямоугольник на полу (квадрат plane).
+              Контакт под ножками — shadowMaterial пола + soft key-spot. */}
+          {!USE_HERO_LOOK && (!refVoid || REFERENCE_VOID.contactShadows) && (
             <ContactShadows
               position={shadow.position}
               opacity={shadow.opacity}

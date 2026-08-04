@@ -6,14 +6,18 @@ import { HERO, LIGHT_LAYERS } from '../../constants/studioScene'
 import { useStudioPerformance } from '../../hooks/useStudioPerformance'
 import { useShkafStore } from '../../store/shkafStore'
 
-function useMainLayers(ref) {
+function useLightLayers(ref, layers) {
   useLayoutEffect(() => {
     const light = ref.current
     if (!light) return
-    light.layers.enable(LIGHT_LAYERS.doors)
-    light.layers.enable(LIGHT_LAYERS.corpus)
-  }, [ref])
+    light.layers.disableAll()
+    layers.forEach((layer) => light.layers.enable(layer))
+  }, [ref, layers])
 }
+
+const KEY_LIGHT_LAYERS = [LIGHT_LAYERS.doors, LIGHT_LAYERS.corpus, LIGHT_LAYERS.floor]
+/** Только двери/береста — иначе ortho-frustum рисует «лишний» прямоугольник на полу */
+const HANDLE_SHADOW_LAYERS = [LIGHT_LAYERS.doors, LIGHT_LAYERS.accent]
 
 /** Spot с целью-object3D: lookAt на группе не работает, нужен light.target */
 function AimedSpotLight({ config, lightRef, castShadow = false, mapSize }) {
@@ -22,7 +26,7 @@ function AimedSpotLight({ config, lightRef, castShadow = false, mapSize }) {
   const targetRef = useRef(null)
   const shadow = config.shadow
 
-  useMainLayers(resolved)
+  useLightLayers(resolved, KEY_LIGHT_LAYERS)
 
   useLayoutEffect(() => {
     const light = resolved.current
@@ -53,6 +57,48 @@ function AimedSpotLight({ config, lightRef, castShadow = false, mapSize }) {
         shadow-bias={shadow?.bias}
         shadow-normalBias={shadow?.normalBias}
         shadow-mapSize={castShadow ? [mapSize, mapSize] : undefined}
+      />
+    </>
+  )
+}
+
+/** Узкий directional: плотная ortho shadow-map на медальон / ручки */
+function AimedDirectionalShadow({ config, mapSize }) {
+  const lightRef = useRef(null)
+  const targetRef = useRef(null)
+  const shadow = config.shadow
+
+  useLightLayers(lightRef, HANDLE_SHADOW_LAYERS)
+
+  useLayoutEffect(() => {
+    const light = lightRef.current
+    const target = targetRef.current
+    if (!light || !target || !shadow) return
+    light.target = target
+    light.shadow.radius = shadow.radius ?? 1
+    light.shadow.blurSamples = shadow.blurSamples ?? 8
+    const cam = light.shadow.camera
+    cam.left = shadow.camera.left
+    cam.right = shadow.camera.right
+    cam.top = shadow.camera.top
+    cam.bottom = shadow.camera.bottom
+    cam.near = shadow.camera.near
+    cam.far = shadow.camera.far
+    cam.updateProjectionMatrix()
+  }, [shadow])
+
+  return (
+    <>
+      <object3D ref={targetRef} position={config.aimAt} />
+      <directionalLight
+        ref={lightRef}
+        position={config.position}
+        intensity={config.intensity}
+        color={config.color}
+        castShadow
+        shadow-bias={shadow?.bias}
+        shadow-normalBias={shadow?.normalBias}
+        shadow-mapSize={[mapSize, mapSize]}
       />
     </>
   )
@@ -93,7 +139,7 @@ function AimedAreaLight({ config, lightRef, layer }) {
 
 function AmbientFill({ config }) {
   const ref = useRef(null)
-  useMainLayers(ref)
+  useLightLayers(ref, KEY_LIGHT_LAYERS)
   return <ambientLight ref={ref} intensity={config.intensity} color={config.color} />
 }
 
@@ -106,9 +152,14 @@ export default function HeroBackdrop() {
   const doorsOpen = useShkafStore((state) => state.doorsOpen)
   const perf = useStudioPerformance()
   const keyRef = useRef(null)
+  const legKickRef = useRef(null)
   const accentRef = useRef(null)
   const interiorRef = useRef(null)
   const keyMapSize = perf.shadowMapSize ?? HERO.keyLight.shadow.mapSize
+  const handleMapSize = Math.min(
+    perf.shadowMapSize ?? 1024,
+    HERO.handleShadow?.shadow?.mapSize ?? 1024,
+  )
 
   useEffect(() => {
     RectAreaLightUniformsLib.init()
@@ -122,6 +173,18 @@ export default function HeroBackdrop() {
         : HERO.keyLight.closedIntensity
       keyRef.current.intensity = THREE.MathUtils.damp(
         keyRef.current.intensity,
+        target,
+        lambda,
+        delta,
+      )
+    }
+    if (legKickRef.current && HERO.legKickLight) {
+      const kick = HERO.legKickLight
+      const target = doorsOpen
+        ? (kick.openIntensity ?? kick.intensity ?? 22)
+        : (kick.closedIntensity ?? kick.intensity ?? 16)
+      legKickRef.current.intensity = THREE.MathUtils.damp(
+        legKickRef.current.intensity,
         target,
         lambda,
         delta,
@@ -159,7 +222,19 @@ export default function HeroBackdrop() {
         castShadow
         mapSize={keyMapSize}
       />
+      {HERO.handleShadow?.type === 'directional' ? (
+        <AimedDirectionalShadow config={HERO.handleShadow} mapSize={handleMapSize} />
+      ) : HERO.handleShadow ? (
+        <AimedSpotLight
+          config={HERO.handleShadow}
+          castShadow
+          mapSize={handleMapSize}
+        />
+      ) : null}
       <AimedSpotLight config={HERO.rimLight} />
+      {HERO.legKickLight ? (
+        <AimedSpotLight config={HERO.legKickLight} lightRef={legKickRef} />
+      ) : null}
       <AmbientFill config={HERO.fillLight} />
       <AimedAreaLight
         config={HERO.accentLight}

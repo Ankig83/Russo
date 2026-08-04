@@ -1,7 +1,16 @@
 import { Suspense, useLayoutEffect, useRef } from 'react'
 import * as THREE from 'three'
-import { HERO } from '../../constants/studioScene'
+import { HERO, LIGHT_LAYERS } from '../../constants/studioScene'
 import { useRoomConcreteTextures } from '../../utils/roomConcreteTextures'
+
+function useFloorLayer(ref) {
+  useLayoutEffect(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    mesh.layers.disableAll()
+    mesh.layers.enable(LIGHT_LAYERS.floor)
+  }, [ref])
+}
 
 function applyRadialFalloff(material, inner, outer) {
   const key = `floor-falloff-${inner}-${outer}`
@@ -39,8 +48,13 @@ ${shader.fragmentShader}`
 function ConcreteFloorDisc() {
   const { floor } = HERO
   const matRef = useRef(null)
+  const discRef = useRef(null)
+  const shadowRef = useRef(null)
   const repeat = floor.textureRepeat ?? [2.8, 2.8]
   const { map, roughnessMap, normalMap } = useRoomConcreteTextures(repeat)
+
+  useFloorLayer(discRef)
+  useFloorLayer(shadowRef)
 
   useLayoutEffect(() => {
     const mat = matRef.current
@@ -51,7 +65,13 @@ function ConcreteFloorDisc() {
 
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow raycast={() => null}>
+      <mesh
+        ref={discRef}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0, 0]}
+        receiveShadow
+        raycast={() => null}
+      >
         <circleGeometry args={[floor.radius, 128]} />
         <meshStandardMaterial
           ref={matRef}
@@ -65,7 +85,13 @@ function ConcreteFloorDisc() {
           envMapIntensity={0}
         />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, 0]} receiveShadow raycast={() => null}>
+      <mesh
+        ref={shadowRef}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.003, 0]}
+        receiveShadow
+        raycast={() => null}
+      >
         <circleGeometry args={[floor.radius, 128]} />
         <shadowMaterial transparent opacity={floor.shadowOpacity ?? 0.58} color="#000000" />
       </mesh>

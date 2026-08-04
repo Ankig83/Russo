@@ -18,9 +18,9 @@ export const USE_WOOD_DOORS = true
 
 /**
  * Бронза (bronze-unity pack) только на ножки.
- * false — прежняя aged brass из attachGlbLegs.
+ * false — ножки как корпус (Material.002 / dark-wood-stain), без отдельного pack.
  */
-export const USE_BRONZE_METAL = true
+export const USE_BRONZE_METAL = false
 
 /** Sculpted light: HDRI + key/rim + beresta на круг */
 export const USE_SCULPTED_LIGHT = true
@@ -39,6 +39,8 @@ export const LIGHT_LAYERS = {
   corpus: 1,
   accent: 2,
   interior: 3,
+  /** Пол — отдельно, чтобы узкий handleShadow (ortho) не рисовал прямоугольник на бетоне */
+  floor: 4,
 }
 
 /**
@@ -50,6 +52,12 @@ export const USE_HERO_LOOK = true
 
 /** Gallery rig из HERO — без StudioLights / directional; IBL — через HERO.env. */
 export const HERO_LIGHTBOX_ONLY = true
+
+/**
+ * true — выключить ВСЕ источники и IBL (HeroBackdrop / StudioLights / Environment).
+ * Сцена остаётся чёрной; меши видны только если есть unlit/emissive.
+ */
+export const USE_NO_LIGHTS = true
 
 /**
  * Premium catalog lighting (Loewe / Poltrona Frau):
@@ -88,17 +96,18 @@ export const HERO = {
     temperature: 4200,
     position: [3.5, 4.3, 3.5],
     aimAt: [0, 1.3, 0.05],
-    angle: 0.42,
+    angle: 0.55,
     penumbra: 1,
     distance: 24,
     decay: 1.4,
-    closedIntensity: 26,
-    openIntensity: 14,
+    closedIntensity: 22,
+    openIntensity: 12,
     shadow: {
       mapSize: 2048,
-      radius: 6,
-      blurSamples: 20,
-      camera: { near: 0.5, far: 18 },
+      /** Мягче на полу — край shadow-map не читается как прямоугольник */
+      radius: 12,
+      blurSamples: 28,
+      camera: { near: 0.8, far: 20 },
       /** -0.0005 + normalBias 0.02 — убирает shadow acne (полосы на корпусе/полу) */
       bias: -0.0005,
       normalBias: 0.02,
@@ -121,6 +130,28 @@ export const HERO = {
     color: '#dce6f2',
     intensity: 0.045,
   },
+  /**
+   * Kick на перекрестье ∞ / медальон — key целится в корпус (y≈1.3),
+   * низ тонет в тени корпуса. Без castShadow, чтобы не плодить вторую тень на полу.
+   */
+  legKickLight: {
+    color: '#ffe6c8',
+    position: [0.95, 1.15, 3.4],
+    /** в перекрестье ∞ / лицо медальона (не в корпус) */
+    aimAt: [0, 0.28, -0.2],
+    angle: 0.48,
+    penumbra: 0.88,
+    distance: 14,
+    decay: 1.3,
+    /** сильнее при открытых дверях — низ иначе в тени корпуса */
+    closedIntensity: 36,
+    openIntensity: 48,
+  },
+  /**
+   * Выключено: узкий ortho directional рисовал на полу чёрный прямоугольник
+   * (проекция frustum). Тени ручек на бересте даёт key-spot.
+   */
+  handleShadow: null,
   /** Узкий accent на латунь (рейки / ручки) */
   accentLight: {
     color: '#ffe0bd',
@@ -152,19 +183,21 @@ export const HERO = {
     roughness: 1,
     metalness: 0,
     falloff: { inner: 1.15, outer: 3.9 },
-    shadowOpacity: 0.5,
+    /** Ниже — меньше «заливка» shadowMaterial, читается только тень от key */
+    shadowOpacity: 0.38,
   },
   /**
    * Contact shadow под ножками — размывается по мере удаления от точки касания.
    * Основную перспективную тень на полу даёт keyLight (spot, castShadow),
    * поэтому отдельный shadow-spot в hero не нужен.
    */
+  /** Мягкий контакт только под ножками — scale больше корпуса давал квадрат на полу */
   contactShadow: {
-    position: [0, 0.045, 0],
-    opacity: 0.34,
-    blur: 3.2,
-    far: 0.55,
-    scale: 5.2,
+    position: [0, 0.04, 0],
+    opacity: 0.42,
+    blur: 4.5,
+    far: 0.7,
+    scale: 2.6,
     color: '#000000',
   },
   /** Hero post — мягче AO / контраст, чтобы тени не уходили в pure black */
