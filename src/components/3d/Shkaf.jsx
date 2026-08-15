@@ -519,9 +519,14 @@ function attachCabinetSceneRoots(model) {
   if (!shkafRoot) return
 
   const attachToShkaf = (node) => {
-    if (node?.parent && node.parent !== shkafRoot) {
-      shkafRoot.attach(node)
+    if (!node?.parent || node.parent === shkafRoot) return
+    // Уже под door_* — не отрывать (Cube/node_0.* крутятся с петлёй)
+    let p = node.parent
+    while (p) {
+      if (p.name === 'door_left' || p.name === 'door_right') return
+      p = p.parent
     }
+    shkafRoot.attach(node)
   }
 
   CABINET_SCENE_ROOTS.forEach((name) => {
@@ -1175,23 +1180,35 @@ function Shkaf({
     rightDoorRef.current = right
 
     const axis = DOOR_ROTATION_AXIS
-    const closedLeft = left?.rotation[axis] ?? 0
-    if (left) closedRotations.current.left = closedLeft
-    if (right) {
-      right.rotation.set(
-        left?.rotation.x ?? 0,
-        closedLeft,
-        left?.rotation.z ?? 0,
-      )
-      closedRotations.current.right = right.rotation[axis]
+    // Closed pose = identity на cinematic pivots (без baked π)
+    if (left) {
+      left.rotation.set(0, 0, 0)
+      closedRotations.current.left = 0
     }
+    if (right) {
+      right.rotation.set(0, 0, 0)
+      closedRotations.current.right = 0
+    }
+
+    // Сразу в актуальное состояние стора (старт — закрыто, rotation Y = 0)
+    const open = useShkafStore.getState().doorsOpen
+    if (left) {
+      left.rotation[axis] = open
+        ? closedRotations.current.left + DOOR_LEFT_OPEN_ANGLE
+        : closedRotations.current.left
+    }
+    if (right) {
+      right.rotation[axis] = open
+        ? closedRotations.current.right + DOOR_RIGHT_OPEN_ANGLE
+        : closedRotations.current.right
+    }
+    setInnerDoorBackfacesVisible(model, open)
     return { left, right }
   }, [model])
 
   // Закомнить закрытое положение дверей; сбросить baked rotation из GLB (door_right часто π по Y)
   useEffect(() => {
     const { left, right } = bindDoorPivots()
-    setInnerDoorBackfacesVisible(model, false)
 
     const drawers = drawerSections.map((s) => {
       const nodeName = SHKAF_NODE_MAP[s.id]

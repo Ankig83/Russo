@@ -2,8 +2,8 @@ const assetBase = import.meta.env.BASE_URL
 
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
-/** v54 — Cube frames: bevel + matching TRS (fix Cube.001 origin mismatch) */
-export const SHKAF_MODEL_VERSION = '54'
+/** v56 — door pivots on inner hinges; start with doors open */
+export const SHKAF_MODEL_VERSION = '56'
 export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
 
 /** Ножки model / model.001 из нового экспорта shkaf_.glb — НЕ сжимать meshopt (scale запечён в геометрию) */

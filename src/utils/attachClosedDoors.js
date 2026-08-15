@@ -182,12 +182,14 @@ export function setClosedDoorsLook(model, facade, useClosedFacade) {
   }
 
   if (!model) return
+  // Без facade нечем подменять — рабочие door_* всегда видны (cinematic GLB).
+  const hideWorkingDoors = !!facade && useClosedFacade
   ;(['door_left', 'door_right']).forEach((name) => {
     const door = model.getObjectByName(name)
     if (!door) return
-    door.visible = !useClosedFacade
+    door.visible = !hideWorkingDoors
     door.traverse((child) => {
-      child.visible = !useClosedFacade
+      child.visible = !hideWorkingDoors
     })
   })
 }
