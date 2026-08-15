@@ -16,19 +16,23 @@ import {
   SHKAF_ROOT_NAME,
   HIDE_SCENE_DECOR,
   CABINET_SCENE_ROOTS,
+  CABINET_SCENE_ROOT_RE,
   findDoorPivotNode,
   INACTIVE_DRAWER_NODES,
   INACTIVE_MESH_NAMES,
   DRAWER_LID_TO_BODY,
+  DRAWER_FRONT_NODES,
   DRAWER_TABL_NODES,
   GLB_LEG_NODES,
   USE_PROCEDURAL_LEGS,
   USE_BAKED_LEGS,
   USE_RUNTIME_LEG_PIPELINE,
+  USE_RUNTIME_LEG_FIT,
   BAKED_LEG_HIDE_NODES,
   USE_ATTACH_BACKWALL,
   USE_ATTACH_LEATHER_RIM,
   USE_CLOSED_DOORS_FACADE,
+  USE_BAKED_CLOSED_DOORS,
   USE_AI_DOOR_TEXTURES,
   CLOSED_DOORS_NODE_NAME,
 } from '../../constants/shkafNodes'
@@ -49,6 +53,12 @@ import { getCabinetPlacement, findByName } from '../../utils/cabinetBounds'
 import { attachGlbLegs } from '../../utils/attachGlbLegs'
 import { attachGlbBackwall } from '../../utils/attachGlbBackwall'
 import { attachClosedDoorsFacade, openBerestaSeamGap, setClosedDoorsLook } from '../../utils/attachClosedDoors'
+import {
+  ensureSplitDoorPivots,
+  doorsUseV46Split,
+  prepareLazyDoorSplit,
+  needsLazyDoorSplit,
+} from '../../utils/splitCombinedDoors'
 import { attachLeatherRims } from '../../utils/attachLeatherRim'
 import {
   findDrawerFromIntersections,
@@ -75,10 +85,13 @@ import {
   collectRibbonLegMeshes,
   ensureDualRibbonLegPairs,
   fitLegsToCabinetWidth,
+  snapBakedLegMedallionsToCross,
 } from '../../utils/legDetail'
 import {
   loadLegMedallionTextures,
+  loadLegSideCopperTextures,
   applyLegDirtyCopper,
+  applyLegSideCopperFromFacade,
   attachLegMedallion,
   removeLegMedallions,
 } from '../../utils/legMedallion'
@@ -451,6 +464,7 @@ function getPairedDrawerName(name) {
   return getDrawerBodyName(name) ?? name
 }
 
+/** Локальный вектор «на камеру» (+Z мира → space parent ящика). */
 function getPullDirection(node) {
   node.updateWorldMatrix(true, false)
   _pullDir.set(0, 0, 1)
@@ -458,6 +472,8 @@ function getPullDirection(node) {
     _parentMatrix.copy(node.parent.matrixWorld).invert()
     _pullDir.transformDirection(_parentMatrix)
   }
+  if (_pullDir.lengthSq() < 1e-8) _pullDir.set(0, 0, 1)
+  else _pullDir.normalize()
   return _pullDir.clone()
 }
 
@@ -481,6 +497,21 @@ function setDoorRaycastEnabled(model, enabled) {
       child.raycast = enabled ? THREE.Mesh.prototype.raycast : () => null
     })
   })
+  // Lazy-split: клик по facade + combined copper (node_0001) до первого open
+  if (needsLazyDoorSplit(model)) {
+    const facade = model?.getObjectByName(CLOSED_DOORS_NODE_NAME)
+    facade?.traverse((child) => {
+      if (!child.isMesh) return
+      child.raycast = enabled ? THREE.Mesh.prototype.raycast : () => null
+    })
+    ;['node_0001', 'node_0.001'].forEach((name) => {
+      const combined = model?.getObjectByName(name)
+      combined?.traverse((child) => {
+        if (!child.isMesh) return
+        child.raycast = enabled ? THREE.Mesh.prototype.raycast : () => null
+      })
+    })
+  }
 }
 
 function attachCabinetSceneRoots(model) {
@@ -494,8 +525,21 @@ function attachCabinetSceneRoots(model) {
   }
 
   CABINET_SCENE_ROOTS.forEach((name) => {
-    if (name === SHKAF_ROOT_NAME) return
+    // shkaf сам и обёртка экспорта — не переносить (shkaf живёт внутри)
+    if (name === SHKAF_ROOT_NAME || name === 'shkaf_closed_export') return
     attachToShkaf(model.getObjectByName(name))
+  })
+
+  // v46/v47: top-level node_0* / medallion* / Btresta_inside* — на shkaf
+  ;[...model.children].forEach((child) => {
+    if (child === shkafRoot) return
+    if (
+      /^node_0/i.test(child.name)
+      || /^leg_cross_medallion/i.test(child.name)
+      || /^Btresta_inside/i.test(child.name)
+    ) {
+      attachToShkaf(child)
+    }
   })
 
   attachToShkaf(findDoorPivotNode(model, 'left'))
@@ -553,7 +597,7 @@ function hideSceneDecor(model) {
   if (!HIDE_SCENE_DECOR) return
   const keep = new Set(CABINET_SCENE_ROOTS)
   model.children.forEach((child) => {
-    child.visible = keep.has(child.name)
+    child.visible = keep.has(child.name) || CABINET_SCENE_ROOT_RE.test(child.name || '')
   })
   ensureDoorPivotsVisible(model)
 }
@@ -601,6 +645,14 @@ function applyProductLightLayers(model) {
     const names = lineageName(child)
     const materials = Array.isArray(child.material) ? child.material : [child.material]
     const materialNames = materials.map((mat) => mat?.name ?? '').join(' ')
+
+    // Ящики только на interior LED — иначе key/legKick/handleShadow (до 64)
+    // заливают полость белым при открытых дверях.
+    if (/drawer_|tabl_/i.test(names)) {
+      child.layers.disableAll()
+      child.layers.enable(LIGHT_LAYERS.interior)
+      return
+    }
 
     if (ACCENT_LIGHT_RE.test(names) || ACCENT_MATERIAL_RE.test(materialNames)) {
       child.layers.enable(LIGHT_LAYERS.accent)
@@ -716,6 +768,16 @@ function finalizeShkafSceneGraph(model) {
     })
   })
 
+  // Фронты-кнопки: raycast включён (layers — в applyProductLightLayers)
+  DRAWER_FRONT_NODES.forEach((name) => {
+    const node = model.getObjectByName(name)
+    if (!node) return
+    node.traverse((child) => {
+      if (!child.isMesh) return
+      child.raycast = THREE.Mesh.prototype.raycast
+    })
+  })
+
   model.traverse((child) => {
     if (child.name.startsWith('Текст')) {
       child.visible = false
@@ -743,20 +805,16 @@ function finalizeShkafSceneGraph(model) {
   ensureDoorPivotsVisible(model)
 }
 
-function Shkaf({ sceneScale = 1 }) {
-  const { scene } = useGLTF(SHKAF_MODEL_PATH)
-  const { scene: backwallScene } = useGLTF(SHKAF_BACKWALL_MODEL_PATH)
-  // Ножки / heavy facade — только если реально нужны (иначе dummy = backwall, без лишнего fetch)
-  const { scene: legsScene } = useGLTF(
-    !USE_BAKED_LEGS && !USE_PROCEDURAL_LEGS ? SHKAF_LEGS_MODEL_PATH : SHKAF_BACKWALL_MODEL_PATH,
-  )
-  const { scene: closedDoorsScene } = useGLTF(
-    USE_CLOSED_DOORS_FACADE ? SHKAF_CLOSED_DOORS_PATH : SHKAF_BACKWALL_MODEL_PATH,
-  )
-  const { scene: leatherRimScene } = useGLTF(
-    USE_ATTACH_LEATHER_RIM ? SHKAF_LEATHER_RIM_PATH : SHKAF_BACKWALL_MODEL_PATH,
-  )
-  const { gl, camera } = useThree()
+function Shkaf({
+  sceneScale = 1,
+  cabinetScene,
+  closedDoorsScene = null,
+  legsScene = null,
+  leatherRimScene = null,
+  backwallScene = null,
+}) {
+  const scene = cabinetScene
+  const { gl, camera, raycaster: r3fRaycaster } = useThree()
   const isMobile = useIsMobile()
   const dragThresholdPx = isMobile ? DRAG_THRESHOLD_MOBILE_PX : DRAG_THRESHOLD_DESKTOP_PX
   const rootRef = useRef()
@@ -796,20 +854,50 @@ function Shkaf({ sceneScale = 1 }) {
       applyProductLightLayers(cloned)
     }
     if (USE_CLOSED_DOORS_FACADE) {
-      const facade = attachClosedDoorsFacade(cloned, closedDoorsScene)
-      setClosedDoorsLook(cloned, facade, true)
-      // Те же карты, что на AI-фасаде — на open door_* (без второго HTTP)
-      if (USE_AI_DOOR_TEXTURES) {
-        const aiMaps = extractAiDoorTexturesFromFacade(facade)
-        if (aiMaps) applyAiDoorFacadeTextures(cloned, aiMaps)
+      // v49+: door_left/right уже в GLB (scripts/split_doors_glb.mjs).
+      // Старый path: facade + lazy split node_0001 при первом open.
+      // Cinematic export: нет facade / node_0001 / door_* — не трогаем userData.
+      const facade = attachClosedDoorsFacade(cloned, closedDoorsScene, { openSeam: false })
+      if (doorsUseV46Split(cloned)) {
+        russoLog('info', 'doors', 'baked split: door_left/right from GLB')
+        setClosedDoorsLook(cloned, facade, true)
+      } else {
+        const lazy = prepareLazyDoorSplit(cloned)
+        if (lazy) {
+          russoLog('info', 'doors', 'lazy split: copper node_0001 + facade until first open')
+        } else {
+          const split = ensureSplitDoorPivots(cloned)
+          if (split) {
+            russoLog('info', 'doors', 'v46 split door_left/right from node_0001')
+          } else if (facade) {
+            openBerestaSeamGap(facade)
+            facade.userData.berestaSeamOpened = true
+            ;(['left', 'right']).forEach((side) => {
+              openBerestaSeamGap(findDoorPivotNode(cloned, side))
+            })
+          } else {
+            russoLog(
+              'warn',
+              'doors',
+              'нет facade / door_* / node_0001 — cinematic GLB as-is (двери не сплитим)',
+            )
+          }
+        }
+        setClosedDoorsLook(cloned, facade, true)
+        if (USE_AI_DOOR_TEXTURES && !doorsUseV46Split(cloned) && !lazy && facade) {
+          const aiMaps = extractAiDoorTexturesFromFacade(facade)
+          if (aiMaps) applyAiDoorFacadeTextures(cloned, aiMaps)
+        }
       }
     } else if (USE_AI_DOOR_TEXTURES) {
       russoLog('warn', 'mat', 'USE_AI_DOOR_TEXTURES без facade — skip')
     }
-    // Шов фаски на рабочих Beresta_* (на фасаде уже в attachClosedDoors)
-    ;(['left', 'right']).forEach((side) => {
-      openBerestaSeamGap(findDoorPivotNode(cloned, side))
-    })
+    // Шов фаски на рабочих Beresta_* (только если нет v46 split / lazy)
+    if (!doorsUseV46Split(cloned) && !needsLazyDoorSplit(cloned) && !USE_CLOSED_DOORS_FACADE) {
+      ;(['left', 'right']).forEach((side) => {
+        openBerestaSeamGap(findDoorPivotNode(cloned, side))
+      })
+    }
     if (USE_ATTACH_LEATHER_RIM) {
       const n = attachLeatherRims(cloned, leatherRimScene)
       russoLog('info', 'mat', `leather rim: ${n} halves`)
@@ -937,27 +1025,82 @@ function Shkaf({ sceneScale = 1 }) {
     }
   }, [model])
 
-  // Ножки: геометрия из GLB + forge PBR (triplanar UV). Медальон — нет.
+  // Ножки: утолщение + металл как у AI-фасада/боковин.
+  // v46+: медальон уже в GLB — НЕ снимать removeLegMedallions (иначе снесёт baked).
   useEffect(() => {
     if (!model || USE_RUNTIME_LEG_PIPELINE) return undefined
-    const removed = removeLegMedallions(model)
-    registerShkafGlbExporter(model)
-    let cancelled = false
-    loadLegMedallionTextures()
-      .then((tex) => {
-        if (cancelled) return
-        const n = applyLegDirtyCopper(model, tex)
+    const hasBakedMedallion = !!model.getObjectByName('leg_cross_medallion_logo')
+    if (!hasBakedMedallion) removeLegMedallions(model)
+    collectRibbonLegMeshes(model).forEach((m) => {
+      delete m.userData.legReshapeVersion
+    })
+    const reshaped = thickenBakedLegs(model)
+    const sample = collectRibbonLegMeshes(model)[0]
+    if (!reshaped) {
+      russoLog('warn', 'mat', 'legs reshape=0 (ok for v46 node_0 ribbons)')
+    } else {
+      russoLog(
+        'info',
+        'mat',
+        `legs thicken: n=${reshaped} axis=${sample?.userData?.legThickenAxis}×${sample?.userData?.legThickenScale?.toFixed?.(2)}`,
+      )
+    }
+
+    // v46+: ∞ уже корпуса → расширить по X; медальон прижать к кресту.
+    // v47 shkaf_for_site: ножки/медальон уже верные в GLB — skip.
+    let fit = null
+    let medalSnap = 0
+    if (USE_RUNTIME_LEG_FIT) {
+      fit = fitLegsToCabinetWidth(model)
+      medalSnap = hasBakedMedallion ? snapBakedLegMedallionsToCross(model) : 0
+      if (fit) {
         russoLog(
           'info',
           'mat',
-          `legs forge PBR: ${n}; medallion removed: ${removed}`,
+          `legs fitX=${fit.scaleX} body=${fit.bodyW} legs ${fit.legW}→${fit.afterW} medalSnap=${medalSnap}`,
+        )
+      }
+    } else {
+      russoLog('info', 'mat', 'legs layout: GLB as-is (USE_RUNTIME_LEG_FIT=false)')
+    }
+
+    // Клон материала фасада — тот же PBR, что на корпусе/боковинах.
+    let n = applyLegSideCopperFromFacade(model, closedDoorsFacade)
+    let src = 'facade-clone'
+    if (!n) {
+      const facadeMaps = extractAiDoorTexturesFromFacade(closedDoorsFacade)
+      if (facadeMaps) {
+        n = applyLegDirtyCopper(model, facadeMaps)
+        src = 'facade-maps'
+      }
+    }
+    registerShkafGlbExporter(model)
+
+    if (n) {
+      russoLog(
+        'info',
+        'mat',
+        `legs side-copper: reshape=${reshaped} mats=${n} src=${src}`,
+      )
+      return undefined
+    }
+
+    let cancelled = false
+    loadLegSideCopperTextures()
+      .then((tex) => {
+        if (cancelled) return
+        const applied = applyLegDirtyCopper(model, tex)
+        russoLog(
+          'info',
+          'mat',
+          `legs side-copper: reshape=${reshaped} mats=${applied} src=doors-ai`,
         )
       })
-      .catch((err) => console.warn('РУССО: leg forge textures not loaded', err))
+      .catch((err) => console.warn('РУССО: leg side-copper textures not loaded', err))
     return () => {
       cancelled = true
     }
-  }, [model])
+  }, [model, closedDoorsFacade])
 
   // Бронза только на ножки (после attachGlbLegs)
   useEffect(() => {
@@ -977,7 +1120,7 @@ function Shkaf({ sceneScale = 1 }) {
     }
   }, [model])
 
-  // Кожа на ободке + ручках (facade и door_*) — grain вместо пластика Material.001
+  // Кожа: force поверх baked M_Leather_* из GLB (иначе на экране плоский материал без normal)
   useEffect(() => {
     if (!model) return undefined
     let cancelled = false
@@ -985,7 +1128,37 @@ function Shkaf({ sceneScale = 1 }) {
       .then((tex) => {
         if (cancelled) return
         const n = applyLeatherAccentMaterials(model, tex)
-        russoLog('info', 'mat', `leather accents: ${n}`)
+        ensureDoorDetailShadows(model)
+        const sample = (() => {
+          let hit = null
+          model.traverse((o) => {
+            if (hit || !o.isMesh || !o.visible) return
+            if (!/^ручка_(левая|правая)_?1?$|кож_обод_.*_facade/i.test(o.name || '')) return
+            // фасад: ручка_*_1 (дубликат имени в GLB); door_* скрыты при closed facade
+            const m = Array.isArray(o.material) ? o.material[0] : o.material
+            let decals = 0
+            const facade = model.getObjectByName('closed_doors_facade')
+            facade?.traverse((c) => {
+              if (c.name?.startsWith('__leather_contact_')) decals += 1
+            })
+            hit = {
+              name: o.name,
+              mat: m?.name,
+              rough: m?.roughness,
+              metal: m?.metalness,
+              hasNormal: !!m?.normalMap,
+              ver: m?.userData?.leatherApplyVersion,
+              decals,
+              z: +o.position.z.toFixed(4),
+            }
+          })
+          return hit
+        })()
+        russoLog(
+          'info',
+          'mat',
+          `leather accents: ${n} sample=${JSON.stringify(sample)}`,
+        )
       })
       .catch((err) => {
         console.warn('РУССО: leather textures not loaded', err)
@@ -995,8 +1168,7 @@ function Shkaf({ sceneScale = 1 }) {
     }
   }, [model])
 
-  // Закомнить закрытое положение дверей; сбросить baked rotation из GLB (door_right часто π по Y)
-  useEffect(() => {
+  const bindDoorPivots = useCallback(() => {
     const left = findDoorPivotNode(model, 'left')
     const right = findDoorPivotNode(model, 'right')
     leftDoorRef.current = left
@@ -1004,9 +1176,7 @@ function Shkaf({ sceneScale = 1 }) {
 
     const axis = DOOR_ROTATION_AXIS
     const closedLeft = left?.rotation[axis] ?? 0
-
     if (left) closedRotations.current.left = closedLeft
-
     if (right) {
       right.rotation.set(
         left?.rotation.x ?? 0,
@@ -1015,20 +1185,17 @@ function Shkaf({ sceneScale = 1 }) {
       )
       closedRotations.current.right = right.rotation[axis]
     }
+    return { left, right }
+  }, [model])
 
+  // Закомнить закрытое положение дверей; сбросить baked rotation из GLB (door_right часто π по Y)
+  useEffect(() => {
+    const { left, right } = bindDoorPivots()
     setInnerDoorBackfacesVisible(model, false)
 
     const drawers = drawerSections.map((s) => {
       const nodeName = SHKAF_NODE_MAP[s.id]
       const node = model.getObjectByName(nodeName)
-      /*
-       * LEGACY PLAQUE DIAGNOSTICS — вернуть вместе с drawer plaques:
-       * const tablName = DRAWER_TABL_NODES[s.id]
-       * const tabl = tablName ? model.getObjectByName(tablName) : null
-       * const tablMat = tabl?.isMesh
-       *   ? (Array.isArray(tabl.material) ? tabl.material[0] : tabl.material)?.name
-       *   : null
-       */
       return {
         id: s.id,
         label: s.label,
@@ -1041,10 +1208,11 @@ function Shkaf({ sceneScale = 1 }) {
     russoShkafReady({
       door_left: left?.name ?? null,
       door_right: right?.name ?? null,
+      lazyDoorSplit: needsLazyDoorSplit(model),
       shkaf: !!shkafGroup,
       drawers,
     })
-  }, [model, shkafGroup])
+  }, [model, shkafGroup, bindDoorPivots])
 
   useEffect(() => {
     russoInteractState({ doorsOpen, animating, activeDrawerId })
@@ -1053,6 +1221,11 @@ function Shkaf({ sceneScale = 1 }) {
   // Закрыто → AI-фасад; открытие/открыто → рабочие door_left/door_right
   useEffect(() => {
     if (!USE_CLOSED_DOORS_FACADE) return
+    // До lazy-split держим facade; после split — классический swap
+    if (needsLazyDoorSplit(model)) {
+      setClosedDoorsLook(model, closedDoorsFacade, true)
+      return
+    }
     const useClosedFacade = !doorsOpen && !animating
     setClosedDoorsLook(model, closedDoorsFacade, useClosedFacade)
     russoLog(
@@ -1071,6 +1244,23 @@ function Shkaf({ sceneScale = 1 }) {
 
       russoLog('info', 'doors', open ? 'открытие дверей…' : 'закрытие дверей…')
       setAnimating(true)
+
+      // Первый open: тяжёлый split node_0001 → door_* (не блокирует initial load)
+      if (open && needsLazyDoorSplit(model)) {
+        const t0 = performance.now()
+        const split = ensureSplitDoorPivots(model)
+        russoLog('info', 'doors', `lazy split done in ${(performance.now() - t0).toFixed(0)}ms`, {
+          ok: !!split,
+        })
+        bindDoorPivots()
+        if (USE_AI_DOOR_TEXTURES) {
+          const facade = model.getObjectByName(CLOSED_DOORS_NODE_NAME)
+          const aiMaps = extractAiDoorTexturesFromFacade(facade)
+          if (aiMaps) applyAiDoorFacadeTextures(model, aiMaps)
+        }
+        // Не openBerestaSeamGap после split — шов из GLB; gap ломал стык медальона
+        setClosedDoorsLook(model, closedDoorsFacade, false)
+      }
 
       const left = leftDoorRef.current
       const right = rightDoorRef.current
@@ -1125,7 +1315,14 @@ function Shkaf({ sceneScale = 1 }) {
         )
       }
     },
-    [animating, setDoorsOpen, setAnimating, model],
+    [
+      animating,
+      setDoorsOpen,
+      setAnimating,
+      model,
+      bindDoorPivots,
+      closedDoorsFacade,
+    ],
   )
 
   const toggleDoors = useCallback(() => {
@@ -1155,15 +1352,24 @@ function Shkaf({ sceneScale = 1 }) {
 
   const handleDrawerClick = useCallback(
     (section, target) => {
-      clearDrawerHover()
+      // Не гасим title: ActiveSectionTitle читает activeDrawerId
+      hoveredDrawerId.current = section.id
+      setHoveredSectionId(section.id)
+      document.body.style.cursor = 'auto'
       setAnimating(true)
       setActiveDrawerId(section.id)
       russoLog('info', 'drawer', `выдвижение ${section.id} → ${section.route}`, {
         node: target.name,
         label: section.label,
+        pullCm: Math.round(DRAWER_PULL_DISTANCE * 100),
       })
 
       const pull = getPullDirection(target)
+      const from = {
+        x: target.position.x,
+        y: target.position.y,
+        z: target.position.z,
+      }
 
       const animateNode = (node) => ({
         x: node.position.x + pull.x * DRAWER_PULL_DISTANCE,
@@ -1181,7 +1387,10 @@ function Shkaf({ sceneScale = 1 }) {
           navTimerRef.current = setTimeout(() => {
             navTimerRef.current = null
             setAnimating(false)
-            russoLog('info', 'nav', `navigate ${section.route}`)
+            russoLog('info', 'nav', `navigate ${section.route}`, {
+              fromZ: +from.z.toFixed(3),
+              toZ: +target.position.z.toFixed(3),
+            })
             navigate(section.route)
           }, NAVIGATE_DELAY_MS)
         },
@@ -1195,7 +1404,7 @@ function Shkaf({ sceneScale = 1 }) {
         : null
       if (paired) tl.to(paired.position, animateNode(paired), 0)
     },
-    [model, navigate, setAnimating, setActiveDrawerId, clearDrawerHover],
+    [model, navigate, setAnimating, setActiveDrawerId, setHoveredSectionId],
   )
 
   useEffect(
@@ -1251,6 +1460,14 @@ function Shkaf({ sceneScale = 1 }) {
           return
         }
 
+        // Пустой луч / пол — не закрываем; иначе клик «в воздух» после open бесит
+        if (!firstObject) {
+          russoClick('miss-ignore', {
+            dragPx,
+            reason: 'двери открыты, hit пустой — не закрываем',
+          })
+          return
+        }
         russoClick('miss-close', {
           hit: firstObject,
           dragPx,
@@ -1278,8 +1495,26 @@ function Shkaf({ sceneScale = 1 }) {
     [model, handleDrawerClick, toggleDoors],
   )
 
-  const tapRaycaster = useMemo(() => new THREE.Raycaster(), [])
+  // Ящики на LIGHT_LAYERS.interior (3) — без этого слоя raycaster их не видит
+  // → клик «мимо» и двери закрываются.
+  const tapRaycaster = useMemo(() => {
+    const r = new THREE.Raycaster()
+    r.layers.enable(LIGHT_LAYERS.doors)
+    r.layers.enable(LIGHT_LAYERS.corpus)
+    r.layers.enable(LIGHT_LAYERS.accent)
+    r.layers.enable(LIGHT_LAYERS.interior)
+    return r
+  }, [])
   const tapNdc = useMemo(() => new THREE.Vector2(), [])
+
+  useEffect(() => {
+    if (!r3fRaycaster) return undefined
+    r3fRaycaster.layers.enable(LIGHT_LAYERS.doors)
+    r3fRaycaster.layers.enable(LIGHT_LAYERS.corpus)
+    r3fRaycaster.layers.enable(LIGHT_LAYERS.accent)
+    r3fRaycaster.layers.enable(LIGHT_LAYERS.interior)
+    return undefined
+  }, [r3fRaycaster])
 
   // Тап через DOM — OrbitControls не конфликтует с R3F pointer handlers на mesh
   useEffect(() => {
@@ -1392,4 +1627,172 @@ function Shkaf({ sceneScale = 1 }) {
   )
 }
 
-export default Shkaf
+/** Грузит только нужные GLB — без dummy backwall и без doors-closed, если фасад baked. */
+function ShkafWithAssets(props) {
+  const { scene } = useGLTF(SHKAF_MODEL_PATH, true, true)
+
+  const needClosedGlb = USE_CLOSED_DOORS_FACADE && !USE_BAKED_CLOSED_DOORS
+  if (needClosedGlb) {
+    return <ShkafLoadClosedDoors cabinetScene={scene} {...props} />
+  }
+  if (!USE_BAKED_LEGS && !USE_PROCEDURAL_LEGS) {
+    return <ShkafLoadLegs cabinetScene={scene} closedDoorsScene={null} {...props} />
+  }
+  if (USE_ATTACH_LEATHER_RIM) {
+    return (
+      <ShkafLoadLeather
+        cabinetScene={scene}
+        closedDoorsScene={null}
+        legsScene={null}
+        {...props}
+      />
+    )
+  }
+  if (USE_ATTACH_BACKWALL) {
+    return (
+      <ShkafLoadBackwall
+        cabinetScene={scene}
+        closedDoorsScene={null}
+        legsScene={null}
+        leatherRimScene={null}
+        {...props}
+      />
+    )
+  }
+  return (
+    <Shkaf
+      cabinetScene={scene}
+      closedDoorsScene={null}
+      legsScene={null}
+      leatherRimScene={null}
+      backwallScene={null}
+      {...props}
+    />
+  )
+}
+
+function ShkafLoadClosedDoors({ cabinetScene, ...props }) {
+  const { scene: closedDoorsScene } = useGLTF(SHKAF_CLOSED_DOORS_PATH)
+  if (!USE_BAKED_LEGS && !USE_PROCEDURAL_LEGS) {
+    return (
+      <ShkafLoadLegs
+        cabinetScene={cabinetScene}
+        closedDoorsScene={closedDoorsScene}
+        {...props}
+      />
+    )
+  }
+  if (USE_ATTACH_LEATHER_RIM) {
+    return (
+      <ShkafLoadLeather
+        cabinetScene={cabinetScene}
+        closedDoorsScene={closedDoorsScene}
+        legsScene={null}
+        {...props}
+      />
+    )
+  }
+  if (USE_ATTACH_BACKWALL) {
+    return (
+      <ShkafLoadBackwall
+        cabinetScene={cabinetScene}
+        closedDoorsScene={closedDoorsScene}
+        legsScene={null}
+        leatherRimScene={null}
+        {...props}
+      />
+    )
+  }
+  return (
+    <Shkaf
+      cabinetScene={cabinetScene}
+      closedDoorsScene={closedDoorsScene}
+      legsScene={null}
+      leatherRimScene={null}
+      backwallScene={null}
+      {...props}
+    />
+  )
+}
+
+function ShkafLoadLegs({ cabinetScene, closedDoorsScene, ...props }) {
+  const { scene: legsScene } = useGLTF(SHKAF_LEGS_MODEL_PATH)
+  if (USE_ATTACH_LEATHER_RIM) {
+    return (
+      <ShkafLoadLeather
+        cabinetScene={cabinetScene}
+        closedDoorsScene={closedDoorsScene}
+        legsScene={legsScene}
+        {...props}
+      />
+    )
+  }
+  if (USE_ATTACH_BACKWALL) {
+    return (
+      <ShkafLoadBackwall
+        cabinetScene={cabinetScene}
+        closedDoorsScene={closedDoorsScene}
+        legsScene={legsScene}
+        leatherRimScene={null}
+        {...props}
+      />
+    )
+  }
+  return (
+    <Shkaf
+      cabinetScene={cabinetScene}
+      closedDoorsScene={closedDoorsScene}
+      legsScene={legsScene}
+      leatherRimScene={null}
+      backwallScene={null}
+      {...props}
+    />
+  )
+}
+
+function ShkafLoadLeather({ cabinetScene, closedDoorsScene, legsScene, ...props }) {
+  const { scene: leatherRimScene } = useGLTF(SHKAF_LEATHER_RIM_PATH)
+  if (USE_ATTACH_BACKWALL) {
+    return (
+      <ShkafLoadBackwall
+        cabinetScene={cabinetScene}
+        closedDoorsScene={closedDoorsScene}
+        legsScene={legsScene}
+        leatherRimScene={leatherRimScene}
+        {...props}
+      />
+    )
+  }
+  return (
+    <Shkaf
+      cabinetScene={cabinetScene}
+      closedDoorsScene={closedDoorsScene}
+      legsScene={legsScene}
+      leatherRimScene={leatherRimScene}
+      backwallScene={null}
+      {...props}
+    />
+  )
+}
+
+function ShkafLoadBackwall({
+  cabinetScene,
+  closedDoorsScene,
+  legsScene,
+  leatherRimScene,
+  ...props
+}) {
+  const { scene: backwallScene } = useGLTF(SHKAF_BACKWALL_MODEL_PATH)
+  return (
+    <Shkaf
+      cabinetScene={cabinetScene}
+      closedDoorsScene={closedDoorsScene}
+      legsScene={legsScene}
+      leatherRimScene={leatherRimScene}
+      backwallScene={backwallScene}
+      {...props}
+    />
+  )
+}
+
+export default ShkafWithAssets

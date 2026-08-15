@@ -2,12 +2,12 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, HashRouter, Routes, Route } from 'react-router-dom'
 import CornerLogo from './components/ui/CornerLogo'
 import Home from './pages/Home'
-import About from './pages/About'
-import PrivateSpaces from './pages/PrivateSpaces'
-import CommercialProjects from './pages/CommercialProjects'
-import AuthorCollections from './pages/AuthorCollections'
-import NotFound from './pages/NotFound'
 
+const About = lazy(() => import('./pages/About'))
+const PrivateSpaces = lazy(() => import('./pages/PrivateSpaces'))
+const CommercialProjects = lazy(() => import('./pages/CommercialProjects'))
+const AuthorCollections = lazy(() => import('./pages/AuthorCollections'))
+const NotFound = lazy(() => import('./pages/NotFound'))
 const ProjectCarouselPage = lazy(
   () => import('./components/portfolio/ProjectCarouselPage'),
 )

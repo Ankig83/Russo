@@ -426,16 +426,29 @@ function findBerestaForHandle(handle) {
 }
 
 /** Задняя плоскость ремня: среднее Z по задним 25% вершин (устойчивее AABB.min). */
-function getHandleBackWorldZ(mesh) {
-  const pos = mesh.geometry?.attributes?.position
-  if (!pos) return null
-  const v = new THREE.Vector3()
+function getHandleBackWorldZ(obj) {
   const zs = []
-  for (let i = 0; i < pos.count; i += 1) {
-    v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld)
-    zs.push(v.z)
+  const v = new THREE.Vector3()
+  const collect = (mesh) => {
+    const pos = mesh.geometry?.attributes?.position
+    if (!pos) return
+    // Заклёпки не участвуют — только ремень (крупный mesh / без rivet в имени)
+    if (/rivet|washer/i.test(mesh.name || '')) return
+    for (let i = 0; i < pos.count; i += 1) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld)
+      zs.push(v.z)
+    }
   }
-  if (!zs.length) return null
+  if (obj.isMesh) collect(obj)
+  else {
+    obj.traverse((c) => {
+      if (c.isMesh) collect(c)
+    })
+  }
+  if (!zs.length) {
+    const box = new THREE.Box3().setFromObject(obj)
+    return box.isEmpty() ? null : box.min.z
+  }
   zs.sort((a, b) => a - b)
   const n = Math.max(1, Math.ceil(zs.length * 0.25))
   let sum = 0
@@ -445,41 +458,139 @@ function getHandleBackWorldZ(mesh) {
 
 /**
  * Посадить ручки на берёсту: спинка ремня → плоскость берёсты + минимальный gap.
- * Раньше liftHandles(+0.016) уводил их в воздух.
+ * Root cause «утоплены»: в GLB `ручка_*` — Group (mesh=null), а ремень — безымянный child;
+ * старый код искал isMesh+/ручка/ и пропускал группу целиком.
  */
-function seatHandlesOnBeresta(root) {
+export function seatHandlesOnBeresta(root) {
   const gap = LEATHER_HARDWARE.handleSeatGap ?? 0.0012
   const berestaBox = new THREE.Box3()
   const parentScale = new THREE.Vector3()
+  const handles = []
 
   root.traverse((child) => {
-    if (!child.isMesh || !/ручка/i.test(child.name || '')) return
-    const beresta = findBerestaForHandle(child)
+    const name = child.name || ''
+    if (!/ручка/i.test(name)) return
+    if (/rivet|washer/i.test(name)) return
+    handles.push(child)
+  })
+
+  handles.forEach((handle) => {
+    const beresta = findBerestaForHandle(handle)
     if (!beresta) return
 
-    child.updateWorldMatrix(true, false)
+    handle.updateWorldMatrix(true, true)
     beresta.updateWorldMatrix(true, false)
     berestaBox.setFromObject(beresta)
     if (berestaBox.isEmpty()) return
 
-    const backZ = getHandleBackWorldZ(child)
+    const backZ = getHandleBackWorldZ(handle)
     if (backZ == null) return
 
     // Берёста плоская в XY; лицевая — max.z.
     const deltaWorldZ = berestaBox.max.z + gap - backZ
     if (Math.abs(deltaWorldZ) > 1e-6) {
-      if (child.parent) {
-        child.parent.getWorldScale(parentScale)
+      if (handle.parent) {
+        handle.parent.getWorldScale(parentScale)
         const sz = Math.abs(parentScale.z) > 1e-6 ? parentScale.z : 1
-        child.position.z += deltaWorldZ / sz
+        handle.position.z += deltaWorldZ / sz
       } else {
-        child.position.z += deltaWorldZ
+        handle.position.z += deltaWorldZ
       }
     }
 
-    child.castShadow = true
-    child.receiveShadow = true
-    child.layers.enable(LIGHT_LAYERS.doors)
+    handle.traverse((c) => {
+      if (!c.isMesh) return
+      c.castShadow = true
+      c.receiveShadow = true
+      c.layers.enable(LIGHT_LAYERS.doors)
+      // handleShadow light смотрит только accent — без этого нет contact-тени
+      c.layers.enable(LIGHT_LAYERS.accent)
+    })
+    handle.userData.leatherBaseZ = handle.position.z
+  })
+
+  symmetrizeHandleSpacing(root)
+}
+
+const _symBox = new THREE.Box3()
+const _symCenter = new THREE.Vector3()
+const _symParentScale = new THREE.Vector3()
+
+/** World X центра ручки (AABB) — не origin группы: у ремня общий local offset, не зеркало. */
+function getHandleWorldCenterX(handle) {
+  handle.updateWorldMatrix(true, true)
+  _symBox.setFromObject(handle)
+  if (_symBox.isEmpty()) return null
+  _symBox.getCenter(_symCenter)
+  return _symCenter.x
+}
+
+/**
+ * Root cause «без изменений»: симметрия position.x групп бесполезна —
+ * у обеих ручек одинаковый local offset ремня (−0.025), не зеркальный →
+ * визуальный центр левой ближе к шву. Ровняем по world AABB center.
+ * Вызывать ПОСЛЕ neutralizeNonUniformScale(facade).
+ */
+export function symmetrizeHandleSpacing(root) {
+  if (!root) return
+  /** @type {Map<THREE.Object3D, { left: THREE.Object3D[], right: THREE.Object3D[] }>} */
+  const byParent = new Map()
+
+  root.traverse((child) => {
+    const name = child.name || ''
+    if (!/^ручка_(левая|правая)/i.test(name)) return
+    if (/rivet|washer/i.test(name)) return
+    const parent = child.parent || root
+    let bucket = byParent.get(parent)
+    if (!bucket) {
+      bucket = { left: [], right: [] }
+      byParent.set(parent, bucket)
+    }
+    if (/лев/i.test(name)) bucket.left.push(child)
+    else bucket.right.push(child)
+  })
+
+  // Шов бересты в world X (между max L и min R)
+  let seamX = null
+  const bL = root.getObjectByName('Beresta_L')
+  const bR = root.getObjectByName('Beresta_R')
+  if (bL && bR) {
+    bL.updateWorldMatrix(true, false)
+    bR.updateWorldMatrix(true, false)
+    const boxL = new THREE.Box3().setFromObject(bL)
+    const boxR = new THREE.Box3().setFromObject(bR)
+    if (!boxL.isEmpty() && !boxR.isEmpty()) {
+      seamX = (boxL.max.x + boxR.min.x) * 0.5
+    }
+  }
+
+  byParent.forEach(({ left, right }) => {
+    const n = Math.min(left.length, right.length)
+    for (let i = 0; i < n; i += 1) {
+      const L = left[i]
+      const R = right[i]
+      const cL = getHandleWorldCenterX(L)
+      const cR = getHandleWorldCenterX(R)
+      if (cL == null || cR == null) continue
+
+      const mid = seamX != null ? seamX : (cL + cR) * 0.5
+      const dist = (Math.abs(cL - mid) + Math.abs(cR - mid)) * 0.5
+      const targetL = mid - dist
+      const targetR = mid + dist
+
+      const shiftLocal = (handle, worldDeltaX) => {
+        if (Math.abs(worldDeltaX) < 1e-6) return
+        if (handle.parent) {
+          handle.parent.getWorldScale(_symParentScale)
+          const sx = Math.abs(_symParentScale.x) > 1e-6 ? _symParentScale.x : 1
+          handle.position.x += worldDeltaX / sx
+        } else {
+          handle.position.x += worldDeltaX
+        }
+      }
+      shiftLocal(L, targetL - cL)
+      shiftLocal(R, targetR - cR)
+    }
   })
 }
 

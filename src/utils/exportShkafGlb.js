@@ -70,20 +70,26 @@ export function arrayBufferToBase64(buffer) {
 }
 
 /**
- * Регистрирует window.__RUSSO_EXPORT_SHKAF_GLB после готовности ножек/медальона.
+ * Регистрирует window.__RUSSO_EXPORT_SHKAF_GLB после готовности шкафа.
+ * Сама регистрация дешёвая; тяжёлый export — только по вызову.
  */
 export function registerShkafGlbExporter(model) {
   if (typeof window === 'undefined' || !model) return
   window.__RUSSO_SHKAF_EXPORT_ROOT = model
+  window.__RUSSO_SHKAF_READY = true
   window.__RUSSO_EXPORT_SHKAF_GLB = async () => {
     const buf = await exportShkafToGlb(model, { binary: true })
     const b64 = arrayBufferToBase64(buf)
     window.__RUSSO_GLB_BASE64 = b64
     window.__RUSSO_GLB_BYTES = buf.byteLength
-    console.info(
-      `РУССО:export GLB ready ${(buf.byteLength / 1024 / 1024).toFixed(2)} MB`,
-    )
+    if (import.meta.env.DEV) {
+      console.info(
+        `РУССО:export GLB ready ${(buf.byteLength / 1024 / 1024).toFixed(2)} MB`,
+      )
+    }
     return { bytes: buf.byteLength, base64: b64 }
   }
-  console.info('РУССО:export exporter ready (window.__RUSSO_EXPORT_SHKAF_GLB)')
+  if (import.meta.env.DEV) {
+    console.info('РУССО:export exporter ready (window.__RUSSO_EXPORT_SHKAF_GLB)')
+  }
 }

@@ -1,0 +1,138 @@
+/**
+ * Портфолио / О нас — язык из DESIGN.md (Apple breath + Lambo stage).
+ * Не копируем синий Apple / жёлтый Lambo: акцент — латунь Руссо, один hit на экран.
+ */
+
+.editorial-page,
+.project-stage {
+  /* Surfaces */
+  --pf-canvas: #0a0a0a;
+  --pf-stage: #141414;
+  --pf-marble: #1a1a1a;
+  --pf-ink: #f5f5f5;
+  --pf-ink-muted: #969696;
+  --pf-ink-dim: #7d7d7d;
+  --pf-rule: #313131;
+  --pf-accent: #c9a45a;
+  --pf-accent-hover: #e0bc72;
+
+  /* Type */
+  --pf-font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --pf-font-body: 'Outfit', system-ui, sans-serif;
+  --pf-track: 0.04em;
+  --pf-track-wide: 0.18em;
+
+  /* Space (8px base, Lambo) */
+  --pf-gap: 24px;
+  --pf-section: 80px;
+  --pf-max: 1440px;
+
+  font-family: var(--pf-font-body);
+  font-weight: 400;
+  color: var(--pf-ink);
+  background: var(--pf-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+.editorial-page {
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* body/html overflow:hidden — скролл живёт здесь */
+  overscroll-behavior: contain;
+}
+
+/* —— Type primitives —— */
+.pf-eyebrow {
+  margin: 0;
+  font-family: var(--pf-font-display);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: var(--pf-track-wide);
+  line-height: 1.5;
+  text-transform: uppercase;
+  color: var(--pf-accent);
+}
+
+.pf-display {
+  margin: 0;
+  font-family: var(--pf-font-display);
+  font-size: clamp(40px, 7vw, 80px);
+  font-weight: 400;
+  letter-spacing: var(--pf-track);
+  line-height: 0.95;
+  text-transform: uppercase;
+  color: var(--pf-ink);
+}
+
+.pf-heading {
+  margin: 0;
+  font-family: var(--pf-font-display);
+  font-size: clamp(28px, 4vw, 48px);
+  font-weight: 400;
+  letter-spacing: var(--pf-track);
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: var(--pf-ink);
+}
+
+.pf-body {
+  margin: 0;
+  font-family: var(--pf-font-body);
+  font-size: 16px;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  line-height: 1.55;
+  color: var(--pf-ink-muted);
+}
+
+.pf-caption {
+  margin: 0;
+  font-family: var(--pf-font-display);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: var(--pf-track-wide);
+  line-height: 1.4;
+  text-transform: uppercase;
+  color: var(--pf-ink-dim);
+}
+
+.pf-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--pf-font-display);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: var(--pf-track-wide);
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--pf-ink-muted);
+  transition: color 200ms ease;
+}
+
+.pf-link:hover {
+  color: var(--pf-accent-hover);
+}
+
+.pf-link--accent {
+  color: var(--pf-accent);
+}
+
+.pf-link--accent:hover {
+  color: var(--pf-ink);
+}
+
+.pf-shell {
+  width: min(100%, var(--pf-max));
+  margin-inline: auto;
+  padding-inline: max(20px, var(--safe-left), var(--safe-right));
+}
+
+@media (min-width: 768px) {
+  .pf-shell {
+    padding-inline: 40px;
+  }
+}

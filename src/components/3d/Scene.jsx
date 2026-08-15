@@ -9,7 +9,6 @@ import StudioBackdrop from './StudioBackdrop'
 import StudioEnvironment from './StudioEnvironment'
 import StudioHorizon from './StudioHorizon'
 import HeroBackdrop from './HeroBackdrop'
-// import HeroLogo from './HeroLogo' // временно выкл. — раскомментировать вместе с JSX ниже
 import ReflectiveFloor from './ReflectiveFloor'
 import StudioLights from './StudioLights'
 import StudioShadowLight from './StudioShadowLight'
@@ -334,6 +333,27 @@ export default function Scene() {
       ? REFERENCE_VOID.toneMappingExposure
       : TONE_MAPPING_EXPOSURE
   const [webglLost, setWebglLost] = useState(false)
+  /** Тяжёлый postFX после первого paint — не блокирует появление шкафа */
+  const [postFxReady, setPostFxReady] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    let frames = 0
+    let raf = 0
+    const tick = () => {
+      if (cancelled) return
+      frames += 1
+      if (frames >= 3) {
+        setPostFxReady(true)
+        return
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+    }
+  }, [])
 
   useEffect(() => {
     if (import.meta.env.DEV) {
@@ -471,7 +491,6 @@ export default function Scene() {
           {USE_HERO_LOOK
             ? <ReflectiveFloor />
             : (!refVoid || REFERENCE_VOID.showHorizon) && <StudioHorizon />}
-          {/* {USE_HERO_LOOK && <HeroLogo />} — большой 3D-лого на лайтбоксе, вернуть при необходимости */}
           <group scale={scale} position={object.position}>
             <Shkaf sceneScale={scale} />
           </group>
@@ -490,7 +509,7 @@ export default function Scene() {
           )}
         </Suspense>
 
-        {perf.postFX && !(refVoid && REFERENCE_VOID.postFX === false) && (
+        {postFxReady && perf.postFX && !(refVoid && REFERENCE_VOID.postFX === false) && (
           <EffectComposer
             enableNormalPass={perf.normalPass && perf.n8ao}
             multisampling={perf.multisampling}

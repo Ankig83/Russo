@@ -22,7 +22,7 @@ export const WOOD_CORPUS_MATERIALS = [
   'door_back.001',
   'door_back.002',
   'patina_PBR',
-  'berestf_insige_M.001',
+  // berestf_insige_M.001 — НЕ дерево: круг бересты на drawer_1/2 (GLB albedo)
 ]
 
 /** Полотна-legacy в корне GLB — не используем (ломают композицию) */

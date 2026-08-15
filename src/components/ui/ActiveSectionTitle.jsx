@@ -3,14 +3,20 @@ import { sections } from '../../constants/sections'
 import { useShkafStore } from '../../store/shkafStore'
 import './ActiveSectionTitle.css'
 
-const FADE_MS = 300
+const FADE_MS = 280
 
-/** Единственная задача компонента — показать название активного раздела. */
+function sideFromSectionId(id) {
+  if (!id) return 'right'
+  return /_(tr|br)$/.test(id) ? 'right' : 'left'
+}
+
+/** Название раздела рядом со шкафом — hover и выдвижение ящика */
 export default function ActiveSectionTitle() {
   const hoveredSectionId = useShkafStore((state) => state.hoveredSectionId)
   const animating = useShkafStore((state) => state.animating)
   const activeDrawerId = useShkafStore((state) => state.activeDrawerId)
-  const requestedId = animating || activeDrawerId ? null : hoveredSectionId
+  // Во время выдвижения ящика — держим его label; при анимации дверей — прячем hover
+  const requestedId = activeDrawerId || (animating ? null : hoveredSectionId)
   const labels = useMemo(
     () => new Map(sections.map((section) => [section.id, section.label])),
     [],
@@ -53,13 +59,23 @@ export default function ActiveSectionTitle() {
     }
   }, [requestedId])
 
+  const side = sideFromSectionId(displayedId)
+  const label = displayedId ? labels.get(displayedId) : ''
+
   return (
     <div className="active-section-title-layer" aria-live="polite" aria-atomic="true">
-      <span
-        className={`active-section-title${visible ? ' active-section-title--visible' : ''}`}
+      <div
+        className={[
+          'active-section-title',
+          `active-section-title--${side}`,
+          visible ? 'active-section-title--visible' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
       >
-        {displayedId ? labels.get(displayedId) : ''}
-      </span>
+        <span className="active-section-title__eyebrow">Раздел</span>
+        <span className="active-section-title__label">{label}</span>
+      </div>
     </div>
   )
 }

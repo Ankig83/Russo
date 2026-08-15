@@ -13,14 +13,14 @@ const DOCK_FRACTION = 0.07
 const DOCK_PAD_X = 0.09
 const DOCK_PAD_Y = 0.08
 /** Докинг в угол — медленнее, «кино» */
-const DOCK_MS = 1.85
+const DOCK_MS = 1.15
 /**
  * Минимальная длительность скана/проявления из темноты.
  * Даже если ассеты уже в кэше — луч не пролетает за долю секунды.
  */
-const REVEAL_MS = 2400
+const REVEAL_MS = 1500
 /** Насколько плавно догоняем target (меньше = медленнее / тяжелее) */
-const REVEAL_DAMP = 1.35
+const REVEAL_DAMP = 1.55
 
 function visibleSize(camera, depth) {
   const fov = THREE.MathUtils.degToRad(camera.fov)

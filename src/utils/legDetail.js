@@ -5,21 +5,19 @@ import * as THREE from 'three'
  * Силуэт петли = путь из GLB; толщина/ширина = сечение.
  */
 export const LEG_DETAIL = {
-  /** профиль ≈60×60 мм: ширина ленты × толщина листа */
-  sectionWidth: 0.06,
-  sheetThickness: 0.06,
-  /** полуширина fallback = sectionWidth/2 */
-  fallbackHalfWidth: 0.03,
+  /** профиль ≈90×80 мм — толще GLB, без Laplacian (он взрывал вершины) */
+  sectionWidth: 0.09,
+  sheetThickness: 0.08,
+  fallbackHalfWidth: 0.045,
+  /** потолок scale тонкой оси — иначе NaN/шипы при битом bbox */
+  maxThicknessScale: 3,
   taperAtCross: 0.74,
   taperRadius: 0.28,
   spineBins: 80,
   extrudeSteps: 140,
-  bevel: 0.003,
-  /**
-   * v12: не re-extrude по UV — у baked лент UV.u = не путь (ломает ∞).
-   * Утолщение = scale offset от Laplacian-spine, силуэт петли сохраняется.
-   */
-  reshapeVersion: 12,
+  bevel: 0.004,
+  /** v17: убран widenRibbonFromSkeleton (Laplacian → vertex explosion) */
+  reshapeVersion: 17,
 }
 
 /**
@@ -34,8 +32,9 @@ export const LEG_PAIR_Z = {
 /** Подгонка ширины ∞ под корпус (ноги не должны выпирать за бока). */
 export const LEG_FIT = {
   /** зазор от бока корпуса до наружного края ножек */
-  inset: 0.03,
-  maxScale: 1,
+  inset: 0.02,
+  /** v46: ноги уже корпуса — разрешаем расширять (раньше max=1 только сужал) */
+  maxScale: 12,
   minScale: 0.5,
 }
 
@@ -242,12 +241,20 @@ export function ensureDualRibbonLegPairs(root, zPair = LEG_PAIR_Z) {
   }
 }
 
+function isV46RibbonLegName(name) {
+  // node_0 / node_0002 — ленты; node_0001 — двери, не трогать
+  return /^node_0$/i.test(name)
+    || /^node_0\.002$/i.test(name)
+    || /^node_0002$/i.test(name)
+}
+
 function isLegRelatedObject(obj) {
   let n = obj
   while (n) {
     const name = n.name || ''
     if (/^Table_Top_Frame/i.test(name)) return true
     if (isBezierRibbonName(name) || n.userData?.legRibbon) return true
+    if (isV46RibbonLegName(name)) return true
     if (/^leg_cross_medallion/i.test(name)) return true
     n = n.parent
   }
@@ -397,6 +404,65 @@ export function fitLegsToCabinetWidth(root, fit = LEG_FIT) {
     legW: +legW.toFixed(3),
     afterW: after.isEmpty() ? null : +(after.max.x - after.min.x).toFixed(3),
   }
+}
+
+function applyWorldDelta(obj, deltaWorld) {
+  if (!obj || deltaWorld.lengthSq() < 1e-12) return
+  const world = new THREE.Vector3()
+  obj.getWorldPosition(world)
+  world.add(deltaWorld)
+  if (obj.parent) {
+    obj.parent.worldToLocal(world)
+    obj.position.copy(world)
+  } else {
+    obj.position.copy(world)
+  }
+}
+
+/**
+ * Baked медальон v46 часто «висит» впереди/ниже креста.
+ * Сдвигаем front/back группы так, чтобы диск лёг вплотную на перекрестье ∞.
+ */
+export function snapBakedLegMedallionsToCross(root, { forwardGap = 0.004 } = {}) {
+  if (!root) return 0
+  root.updateMatrixWorld(true)
+  const legBox = measureLegBox(root)
+  if (legBox.isEmpty()) return 0
+
+  const cx = (legBox.min.x + legBox.max.x) * 0.5
+  const cy = (legBox.min.y + legBox.max.y) * 0.5
+
+  const all = []
+  root.traverse((o) => {
+    if (!o.isMesh) return
+    if (!/^leg_cross_medallion/i.test(o.name || '')) return
+    all.push(o)
+  })
+  if (!all.length) return 0
+
+  const isBack = (o) => /001$/.test(String(o.name || '').replace(/\./g, ''))
+  const fronts = all.filter((o) => !isBack(o))
+  const backs = all.filter((o) => isBack(o))
+
+  const snapGroup = (group, face) => {
+    if (!group.length) return 0
+    const logo = group.find((o) => /logo/i.test(o.name || '')) || group[0]
+    logo.updateWorldMatrix(true, false)
+    const box = new THREE.Box3().setFromObject(logo)
+    if (box.isEmpty()) return 0
+    const center = box.getCenter(new THREE.Vector3())
+    const delta = new THREE.Vector3(cx - center.x, cy - center.y, 0)
+    if (face === 'front') {
+      // задняя грань медальона → лицевая плоскость лент
+      delta.z = legBox.max.z + forwardGap - box.min.z
+    } else {
+      delta.z = legBox.min.z - forwardGap - box.max.z
+    }
+    group.forEach((o) => applyWorldDelta(o, delta))
+    return group.length
+  }
+
+  return snapGroup(fronts, 'front') + snapGroup(backs, 'back')
 }
 
 function smoothstep(edge0, edge1, x) {
@@ -595,11 +661,8 @@ function buildSheetExtrusion(spinePoints, baseHalfW, cfg) {
 /**
  * Утолщение baked Extrude-ленты без пересборки пути.
  *
- * Root cause поломки: UV.u у этих mesh — не параметр spine (похоже на X),
- * ExtrudeGeometry по такому «пути» схлопывал ∞ в кашу.
- *
- * Безопасно: pristine GLB → scale локальной Z (ось сечения ≈40мм) до sheetThickness,
- * плюс лёгкий inflate по нормали для массива 60×60. Силуэт петли не трогаем.
+ * Безопасно: pristine GLB → scale тонкой оси до sheetThickness.
+ * НЕ использовать Laplacian-скелет: при widthScale≫1 вершины улетают в «шипы».
  */
 function thickenRibbonPreservePath(mesh, cfg = LEG_DETAIL) {
   if (!mesh?.geometry?.attributes?.position) return false
@@ -612,12 +675,12 @@ function thickenRibbonPreservePath(mesh, cfg = LEG_DETAIL) {
   geo.computeBoundingBox()
   const box = geo.boundingBox
   const size = box.getSize(new THREE.Vector3())
-  if (Math.max(size.x, size.y) < 0.25) {
-    console.warn('РУССО: pristine leg already collapsed', mesh.name)
+  const loopSpan = Math.max(size.x, size.y)
+  if (loopSpan < 0.25 || loopSpan > 5) {
+    console.warn('РУССО: pristine leg bbox bad', mesh.name, size.toArray())
     return false
   }
 
-  // У этих baked лент тонкая ось сечения = локальный Z (bbox.z ≈ 0.04).
   const axis = size.z <= size.x && size.z <= size.y ? 'z' : (size.x <= size.y ? 'x' : 'y')
   const currentT = axis === 'x' ? size.x : axis === 'y' ? size.y : size.z
   const mid = axis === 'x'
@@ -625,7 +688,10 @@ function thickenRibbonPreservePath(mesh, cfg = LEG_DETAIL) {
     : axis === 'y'
       ? (box.min.y + box.max.y) * 0.5
       : (box.min.z + box.max.z) * 0.5
-  const zScale = cfg.sheetThickness / Math.max(currentT, 1e-6)
+  const zScale = Math.min(
+    cfg.sheetThickness / Math.max(currentT, 1e-6),
+    cfg.maxThicknessScale ?? 3,
+  )
 
   const pos = geo.attributes.position
   for (let i = 0; i < pos.count; i += 1) {
@@ -634,23 +700,16 @@ function thickenRibbonPreservePath(mesh, cfg = LEG_DETAIL) {
     else pos.setZ(i, mid + (pos.getZ(i) - mid) * zScale)
   }
 
-  // Добор ширины ленты в плоскости петли (XY): только нормаль без оси толщины,
-  // чтобы не раздувать Z второй раз после scale.
-  const currentW = 0.04
-  const extra = Math.max(0, (cfg.sectionWidth - currentW) * 0.5)
-  if (extra > 1e-5) {
+  // Лёгкий inflate только по XY-нормали (кромки ленты), без скелета.
+  const extra = Math.max(0, (cfg.sectionWidth - currentT) * 0.5)
+  if (extra > 1e-5 && axis === 'z') {
     geo.computeVertexNormals()
     const nrm = geo.attributes.normal
     for (let i = 0; i < pos.count; i += 1) {
-      let nx = nrm.getX(i)
-      let ny = nrm.getY(i)
-      if (axis === 'x') nx = 0
-      if (axis === 'y') ny = 0
-      if (axis === 'z') {
-        /* thickness = Z — ширина только в XY */
-      }
+      const nx = nrm.getX(i)
+      const ny = nrm.getY(i)
       const len = Math.hypot(nx, ny)
-      if (len < 1e-6) continue
+      if (len < 0.35) continue
       pos.setX(i, pos.getX(i) + (nx / len) * extra)
       pos.setY(i, pos.getY(i) + (ny / len) * extra)
     }
@@ -662,8 +721,10 @@ function thickenRibbonPreservePath(mesh, cfg = LEG_DETAIL) {
   geo.computeBoundingSphere()
 
   const after = geo.boundingBox.getSize(new THREE.Vector3())
-  if (Math.max(after.x, after.y) < 0.25) {
-    console.warn('РУССО: leg thicken collapsed — keep pristine', mesh.name)
+  const afterSpan = Math.max(after.x, after.y)
+  // collapse ИЛИ explosion (Laplacian раньше давал шипы на весь экран)
+  if (afterSpan < 0.25 || afterSpan > loopSpan * 2.5 || !Number.isFinite(afterSpan)) {
+    console.warn('РУССО: leg thicken bad result — keep pristine', mesh.name, after.toArray())
     mesh.geometry = pristine.clone()
     return false
   }
@@ -671,6 +732,8 @@ function thickenRibbonPreservePath(mesh, cfg = LEG_DETAIL) {
   mesh.geometry = geo
   mesh.userData.legReshapeVersion = cfg.reshapeVersion
   mesh.userData.legThickened = true
+  mesh.userData.legThickenAxis = axis
+  mesh.userData.legThickenScale = zScale
   mesh.castShadow = true
   mesh.receiveShadow = true
   return true

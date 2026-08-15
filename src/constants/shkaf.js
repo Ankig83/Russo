@@ -19,9 +19,11 @@ export const DOOR_OPEN_ANGLE = (120 * Math.PI) / 180
 export const DOOR_LEFT_OPEN_ANGLE = -DOOR_OPEN_ANGLE
 export const DOOR_RIGHT_OPEN_ANGLE = DOOR_OPEN_ANGLE
 export const DOOR_OPEN_DURATION = 0.8
-export const DRAWER_PULL_DISTANCE = 0.4
-export const DRAWER_OPEN_DURATION = 0.6
-export const NAVIGATE_DELAY_MS = 400
+/** Выдвижение ящика к камере (~6 см в метрах сцены) */
+export const DRAWER_PULL_DISTANCE = 0.06
+export const DRAWER_OPEN_DURATION = 0.55
+/** Пауза после выдвижения, чтобы жест успел прочитаться */
+export const NAVIGATE_DELAY_MS = 280
 
 /** Масштаб на мобильных */
 export const DESKTOP_SCALE = 1

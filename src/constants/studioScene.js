@@ -41,6 +41,12 @@ export const LIGHT_LAYERS = {
   interior: 3,
   /** Пол — отдельно, чтобы узкий handleShadow (ortho) не рисовал прямоугольник на бетоне */
   floor: 4,
+  /**
+   * CINEMATIC reflectors — как Blender visible_camera=false:
+   * камера слой не видит, меши остаются в сцене (diffuse/glossy bounce в Cycles;
+   * в three.js — для будущего probe / не кликаются).
+   */
+  reflector: 5,
 }
 
 /**
@@ -57,102 +63,124 @@ export const HERO_LIGHTBOX_ONLY = true
  * true — выключить ВСЕ источники и IBL (HeroBackdrop / StudioLights / Environment).
  * Сцена остаётся чёрной; меши видны только если есть unlit/emissive.
  */
-export const USE_NO_LIGHTS = true
+export const USE_NO_LIGHTS = false
 
 /**
- * Premium catalog lighting (Loewe / Poltrona Frau):
- * warm key + cool rim + soft fill + brass accent + interior LED.
- * Старые значения закомментированы ниже для отката.
+ * CINEMATIC_STUDIO из D:\Temp\render_2.blend1.blend
+ * Area lights KEY/FILL/BACK/TOP_RIM + CINEMATIC_CAMERA 75mm.
+ * Blender Z-up → Three (x, z, -y). Aim — центр изделия.
  */
 export const HERO = {
   background: '#000000',
   /**
-   * IBL — микроблики / контактные тона на меди и бересте.
-   * background={false}: void остаётся чёрным, HDRI только как envMap.
-   * Poly Haven studio_small_08 — компактная студия, мягкие софтбоксы.
+   * В Blender world strength ≈ 0.035 (почти void).
+   * Лёгкий LDR только для микробликов на металле — не заливка сцены.
    */
   env: {
     url: `${assetBase}HDRI/studio_small_08_2k.hdr?v=1`,
+    ldrUrl: `${assetBase}HDRI/hunyuan_gallery_eq.webp?v=1`,
+    useLdr: true,
     preset: null,
-    /** IBL только формирует микроблики; основной рисунок даёт key. */
-    intensity: 0.16,
+    intensity: 0.08,
+    background: false,
   },
-  /*
-   * PREV — rect-area rig (до three-point retune):
-   * keyLight: { color:'#ffe3cc', position:[-3.4,4.1,4.4], aimAt:[0,1.28,0.02],
-   *   width:6.8, height:7.2, closedIntensity:1.12, openIntensity:0.62 }
-   * rimLight: { color:'#dce8ff', position:[1.2,4.0,-2.8], aimAt:[0,1.55,0],
-   *   width:1.6, height:3.6, intensity:0.1 }
-   * fillLight: { color:'#dce6f2', position:[3.4,2.4,3.6], aimAt:[0,1.25,0.05],
-   *   width:5.4, height:6.2, intensity:0.16 }
-   */
+  /** CINEMATIC_CAMERA: 75mm / sensor 36 → fov ≈ 27° */
+  camera: {
+    fov: 27,
+    position: [3.345, 1.689, 11.938],
+    target: [-0.407, 1.346, 0.131],
+  },
+  cameraMobile: {
+    fov: 30,
+    position: [2.4, 1.55, 9.2],
+    target: [0, 1.3, 0.05],
+  },
   /**
-   * KEY — spot сбоку-сверху под ~45°. Именно spot, а не RectAreaLight:
-   * area-свет в three.js не умеет castShadow, поэтому ручки не давали тень
-   * на берестяной круг. Этот же источник рисует тень шкафа на полу.
+   * KEY_LIGHT — Area DISK Ø5, energy 1050, warm.
+   * RectArea даёт форму как в Blender; тень пола — отдельный shadowSpot.
    */
   keyLight: {
-    color: '#fff4e0',
-    temperature: 4200,
-    position: [3.5, 4.3, 3.5],
-    aimAt: [0, 1.3, 0.05],
+    type: 'area',
+    color: '#ffd1a5',
+    position: [-3.5, 5.4, 5.2],
+    aimAt: [0, 1.35, 0],
+    width: 5,
+    height: 5,
+    closedIntensity: 1.85,
+    openIntensity: 1.15,
+  },
+  /** Shadow-only вдоль KEY — RectArea в three.js не умеет castShadow */
+  shadowSpot: {
+    color: '#ffd1a5',
+    position: [-3.5, 5.4, 5.2],
+    aimAt: [0, 1.2, 0],
     angle: 0.55,
     penumbra: 1,
-    distance: 24,
+    distance: 28,
     decay: 1.4,
-    closedIntensity: 22,
-    openIntensity: 12,
+    closedIntensity: 14,
+    openIntensity: 10,
     shadow: {
       mapSize: 2048,
-      /** Мягче на полу — край shadow-map не читается как прямоугольник */
-      radius: 12,
-      blurSamples: 28,
-      camera: { near: 0.8, far: 20 },
-      /** -0.0005 + normalBias 0.02 — убирает shadow acne (полосы на корпусе/полу) */
+      radius: 10,
+      blurSamples: 24,
+      camera: { near: 0.8, far: 24 },
       bias: -0.0005,
-      normalBias: 0.02,
+      normalBias: 0.04,
     },
   },
-  /** RIM / contre-jour — spot сзади, холодный: отделяет корпус от чёрного фона */
+  /** BACK_LIGHT — холодный rim Area DISK Ø3, energy 500 */
   rimLight: {
-    color: '#e0f4ff',
-    temperature: 7000,
-    position: [-2.7, 3.9, -3.0],
-    aimAt: [0.1, 1.85, 0.2],
-    angle: 0.34,
-    penumbra: 0.85,
-    distance: 20,
-    decay: 1.4,
-    intensity: 38,
+    type: 'area',
+    color: '#a5bfff',
+    position: [0, 3.0, -3.5],
+    aimAt: [0, 1.55, 0],
+    width: 3,
+    height: 3,
+    intensity: 0.85,
   },
-  /** FILL — ambient ~12% от key: поднимает глухие тени, не убивая контраст */
+  /** FILL_LIGHT — Area DISK Ø5, energy 240 */
   fillLight: {
-    color: '#dce6f2',
-    intensity: 0.045,
+    type: 'area',
+    color: '#b7c6d8',
+    position: [2.5, 2.5, 3.0],
+    aimAt: [0, 1.3, 0],
+    width: 5,
+    height: 5,
+    intensity: 0.42,
   },
-  /**
-   * Kick на перекрестье ∞ / медальон — key целится в корпус (y≈1.3),
-   * низ тонет в тени корпуса. Без castShadow, чтобы не плодить вторую тень на полу.
-   */
-  legKickLight: {
-    color: '#ffe6c8',
-    position: [0.95, 1.15, 3.4],
-    /** в перекрестье ∞ / лицо медальона (не в корпус) */
-    aimAt: [0, 0.28, -0.2],
-    angle: 0.48,
-    penumbra: 0.88,
+  /** TOP_RIM_LIGHT — Area DISK Ø4, energy 950 */
+  topRimLight: {
+    type: 'area',
+    color: '#ffeac6',
+    position: [0.8, 5.0, -1.0],
+    aimAt: [0, 1.7, 0],
+    width: 4,
+    height: 4,
+    intensity: 1.05,
+  },
+  /** В cinematic-риге Blender kick/ambient нет */
+  legKickLight: null,
+  /** Тень ручки на бересте — служебный, не из Blender */
+  handleShadow: {
+    type: 'spot',
+    color: '#ffe4c8',
+    position: [2.4, 3.2, 2.2],
+    aimAt: [0, 1.42, 0.4],
+    angle: 0.3,
+    penumbra: 0.4,
     distance: 14,
-    decay: 1.3,
-    /** сильнее при открытых дверях — низ иначе в тени корпуса */
-    closedIntensity: 36,
-    openIntensity: 48,
+    decay: 1.2,
+    intensity: 28,
+    shadow: {
+      mapSize: 2048,
+      radius: 0.6,
+      blurSamples: 4,
+      bias: -0.0001,
+      normalBias: 0.008,
+      camera: { near: 0.4, far: 16 },
+    },
   },
-  /**
-   * Выключено: узкий ortho directional рисовал на полу чёрный прямоугольник
-   * (проекция frustum). Тени ручек на бересте даёт key-spot.
-   */
-  handleShadow: null,
-  /** Узкий accent на латунь (рейки / ручки) */
   accentLight: {
     color: '#ffe0bd',
     temperature: 4300,
@@ -160,10 +188,9 @@ export const HERO = {
     aimAt: [0, 1.38, 0.35],
     width: 0.22,
     height: 2.1,
-    closedIntensity: 0.28,
-    openIntensity: 0.2,
+    closedIntensity: 0.22,
+    openIntensity: 0.16,
   },
-  /** Interior warm LED ~2700K — только при открытых дверях */
   interiorLight: {
     color: '#ffb870',
     temperature: 2700,
@@ -172,26 +199,30 @@ export const HERO = {
     width: 1.35,
     height: 0.14,
     closedIntensity: 0,
-    openIntensity: 2.85,
+    openIntensity: 1.05,
   },
-  /** Пол — матовый бетон (текстура), без отражений, falloff в void */
+  /** Mossy Dark Rock из blend — без Displacement (только PBR maps) */
   floor: {
+    source: 'cinematic',
     color: '#ffffff',
-    radius: 6.2,
-    textureRepeat: [2.6, 2.6],
-    normalScale: 0.18,
+    radius: 8.5,
+    textureRepeat: [2.0, 2.0],
+    normalScale: 0.55,
     roughness: 1,
     metalness: 0,
-    falloff: { inner: 1.15, outer: 3.9 },
-    /** Ниже — меньше «заливка» shadowMaterial, читается только тень от key */
-    shadowOpacity: 0.38,
+    falloff: { inner: 2.2, outer: 7.5 },
+    shadowOpacity: 0.42,
   },
-  /**
-   * Contact shadow под ножками — размывается по мере удаления от точки касания.
-   * Основную перспективную тень на полу даёт keyLight (spot, castShadow),
-   * поэтому отдельный shadow-spot в hero не нужен.
-   */
-  /** Мягкий контакт только под ножками — scale больше корпуса давал квадрат на полу */
+  /** Dark Mottled Metal — задник, имитация STUDIO_CYCLORAMA */
+  cyclorama: {
+    enabled: true,
+    position: [0, 4.5, -4.2],
+    size: [18, 10],
+    color: '#ffffff',
+    roughness: 0.85,
+    metalness: 0.35,
+    textureRepeat: [2.2, 1.1],
+  },
   contactShadow: {
     position: [0, 0.04, 0],
     opacity: 0.42,
@@ -200,30 +231,25 @@ export const HERO = {
     scale: 2.6,
     color: '#000000',
   },
-  /** Hero post — мягче AO / контраст, чтобы тени не уходили в pure black */
-  toneMappingExposure: 0.9,
+  /** AgX exposure 0 в Blender; ACES чуть ярче — 0.85 */
+  toneMappingExposure: 0.85,
   postprocessing: {
-    /** Узкий AO — мелкие контактные тени вместо широкой грязной каймы. */
-    aoRadius: 0.24,
-    aoIntensity: 0.72,
-    bloomIntensity: 0.02,
-    bloomThreshold: 1.05,
-    bloomSmoothing: 0.28,
+    aoRadius: 0.28,
+    aoIntensity: 1.15,
+    bloomIntensity: 0.008,
+    bloomThreshold: 1.3,
+    bloomSmoothing: 0.3,
     noiseOpacity: 0,
-    vignetteOffset: 0.78,
-    vignetteDarkness: 0.08,
-    contrast: 0.015,
-    brightness: 0.012,
-    saturation: -0.01,
+    vignetteOffset: 0.72,
+    vignetteDarkness: 0.14,
+    contrast: 0.02,
+    brightness: 0,
+    saturation: -0.02,
   },
-  /** Объёмный логотип РУССО (экструзия из SVG) на лайтбоксе выше шкафа */
   logo: {
     src: `${assetBase}images/russo-logo.svg`,
-    /** позиция центра знака (ниже, чем раньше — по сетке лайтбокса) */
     position: [0, 3.55, -2.28],
-    /** целевая ширина знака в мире (чуть меньше — пропорционально) */
     width: 3.2,
-    /** глубина экструзии в единицах SVG (до масштабирования) */
     depth: 18,
     color: '#0c0c0c',
     metalness: 0.55,
@@ -274,18 +300,17 @@ export const CORPUS_PBR = {
 /** Береста — тёплая, с рельефом прожилок (normal + bump из GLB) */
 export const BERESTA_PBR = {
   /**
-   * Множитель albedo. #ffffff = как в GLB (baseColorFactor не задан).
-   * Не тинтить — иначе уходит от оригинальной береста_темная.
+   * Чуть темнее GLB — иначе круг клипует в белое и тени ручек не читаются.
    */
-  color: '#ffffff',
-  roughness: 0.74,
+  color: '#c9a878',
+  roughness: 0.78,
   /** GLB normal = albedo, не используем; рельеф через bump */
   normalScale: 1,
-  bumpScale: 0.1,
-  env: 0.18,
-  specular: 0.08,
-  sheen: 0.1,
-  sheenRoughness: 0.68,
+  bumpScale: 0.14,
+  env: 0.14,
+  specular: 0.06,
+  sheen: 0.08,
+  sheenRoughness: 0.72,
   sheenColor: '#d8a860',
 }
 
@@ -377,7 +402,7 @@ export const STUDIO = {
     maxPolar: 1.58,
     /** Приближение — без изменений; отдаление — не дальше стартового кадра (см. STUDIO_CAMERA_START_DISTANCE) */
     minDistance: 2,
-    maxDistance: 12,
+    maxDistance: 16,
     enablePan: true,
     /** Ограничения ПКМ-pan относительно STUDIO.camera.target */
     panLimits: {
@@ -553,7 +578,7 @@ export const STUDIO_MOBILE = {
     minPolar: 1.1,
     maxPolar: 1.65,
     minDistance: 1.5,
-    maxDistance: 10,
+    maxDistance: 14,
     /** Два пальца: pinch = zoom, сдвиг = pan (как ПКМ на десктопе) */
     enablePan: true,
     panLimits: {
@@ -574,6 +599,10 @@ export function getStudioCameraStartDistance(cam) {
 }
 
 export function getStudioCameraConfig(isMobile) {
+  if (USE_HERO_LOOK && HERO.camera) {
+    if (isMobile && HERO.cameraMobile) return HERO.cameraMobile
+    return HERO.camera
+  }
   return isMobile ? STUDIO_MOBILE.camera : STUDIO.camera
 }
 

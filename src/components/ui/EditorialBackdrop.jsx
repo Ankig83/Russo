@@ -1,6 +1,6 @@
 import './EditorialBackdrop.css'
 
-/** Тёмный фактурный фон внутренних страниц — камень, патина и тёплый металл. */
+/** Тёмный сценический фон внутренних страниц (без декоративного шума). */
 export default function EditorialBackdrop() {
   return (
     <div className="editorial-backdrop" aria-hidden="true">

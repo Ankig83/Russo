@@ -2,6 +2,7 @@ import { Suspense, useLayoutEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { HERO, LIGHT_LAYERS } from '../../constants/studioScene'
 import { useRoomConcreteTextures } from '../../utils/roomConcreteTextures'
+import { useCinematicFloorTextures } from '../../utils/cinematicStudioTextures'
 
 function useFloorLayer(ref) {
   useLayoutEffect(() => {
@@ -44,14 +45,11 @@ ${shader.fragmentShader}`
   }
 }
 
-/** Бетонный диск: PBR-текстура, матовый, без отражений + falloff в void */
-function ConcreteFloorDisc() {
+function FloorDisc({ maps }) {
   const { floor } = HERO
   const matRef = useRef(null)
   const discRef = useRef(null)
   const shadowRef = useRef(null)
-  const repeat = floor.textureRepeat ?? [2.8, 2.8]
-  const { map, roughnessMap, normalMap } = useRoomConcreteTextures(repeat)
 
   useFloorLayer(discRef)
   useFloorLayer(shadowRef)
@@ -75,9 +73,9 @@ function ConcreteFloorDisc() {
         <circleGeometry args={[floor.radius, 128]} />
         <meshStandardMaterial
           ref={matRef}
-          map={map}
-          roughnessMap={roughnessMap}
-          normalMap={normalMap}
+          map={maps.map}
+          roughnessMap={maps.roughnessMap}
+          normalMap={maps.normalMap}
           normalScale={new THREE.Vector2(floor.normalScale ?? 0.18, floor.normalScale ?? 0.18)}
           color={floor.color}
           roughness={floor.roughness}
@@ -99,10 +97,23 @@ function ConcreteFloorDisc() {
   )
 }
 
+function CinematicFloorDisc() {
+  const repeat = HERO.floor.textureRepeat ?? [2, 2]
+  const maps = useCinematicFloorTextures(repeat)
+  return <FloorDisc maps={maps} />
+}
+
+function ConcreteFloorDisc() {
+  const repeat = HERO.floor.textureRepeat ?? [2.8, 2.8]
+  const maps = useRoomConcreteTextures(repeat)
+  return <FloorDisc maps={maps} />
+}
+
 export default function ReflectiveFloor() {
+  const cinematic = HERO.floor?.source === 'cinematic'
   return (
     <Suspense fallback={null}>
-      <ConcreteFloorDisc />
+      {cinematic ? <CinematicFloorDisc /> : <ConcreteFloorDisc />}
     </Suspense>
   )
 }

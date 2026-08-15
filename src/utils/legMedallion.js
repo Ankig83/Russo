@@ -265,6 +265,40 @@ function makeNormalFromLuma(sourceTex, strength = 2.5) {
   return normal
 }
 
+function loadTexWithFallback(urls, colorSpace) {
+  const tryOne = (i) => loadTex(urls[i], colorSpace).catch((err) => {
+    if (i + 1 >= urls.length) throw err
+    return tryOne(i + 1)
+  })
+  return tryOne(0)
+}
+
+/** Лёгкая загрузка PBR для лент ∞ — без logo/medallion face (те тяжёлые и ломали Promise). */
+export function loadLegSideCopperTextures() {
+  const v = LEG_MEDALLION_TEX_VERSION
+  const base = assetBase
+  return Promise.all([
+    loadTexWithFallback([
+      `${base}textures/doors-ai/doors_ai_baseColor.webp?v=${v}`,
+      `${base}textures/doors-ai/doors_ai_baseColor.png?v=${v}`,
+    ], THREE.SRGBColorSpace),
+    loadTexWithFallback([
+      `${base}textures/doors-ai/doors_ai_metallicRoughness.webp?v=${v}`,
+      `${base}textures/doors-ai/doors_ai_metallicRoughness.png?v=${v}`,
+    ], THREE.NoColorSpace),
+    loadTexWithFallback([
+      `${base}textures/doors-ai/doors_ai_normal.webp?v=${v}`,
+      `${base}textures/doors-ai/doors_ai_normal.png?v=${v}`,
+    ], THREE.NoColorSpace),
+  ]).then(([baseMap, mr, normal]) => ({
+    // без ageForgeAlbedo — CPU-петля на 3K² вешала main thread на секунды
+    legMap: baseMap,
+    legNormalMap: normal,
+    legRoughnessMap: mr,
+    legMetalnessMap: mr,
+  }))
+}
+
 export function loadLegMedallionTextures() {
   return Promise.all([
     loadTex(LEG_FORGE_BASECOLOR_URL, THREE.SRGBColorSpace),
@@ -622,27 +656,119 @@ export function ensureLegUv(mesh, { force = false } = {}) {
   geo.setAttribute('uv2', geo.attributes.uv.clone())
 }
 
-/** Один shared material на ленты — forge PBR с корректным UV. */
+function findFacadeCopperMaterial(facade) {
+  if (!facade) return null
+  let sourceMat = null
+  facade.traverse((child) => {
+    if (sourceMat || !child.isMesh || !child.material) return
+    const mats = Array.isArray(child.material) ? child.material : [child.material]
+    for (const mat of mats) {
+      if (!mat?.map) continue
+      if (
+        mat.name === 'M_ClosedDoors_AI'
+        || mat.name === 'M_AiDoor_left'
+        || mat.name === 'M_AiDoor_right'
+        || mat.name === 'Material.002'
+        || child.name === 'node_0'
+      ) {
+        sourceMat = mat
+        break
+      }
+    }
+  })
+  return sourceMat
+}
+
+function assignLegMetalMaterial(root, mat, { touchUv = false, forceUv = false } = {}) {
+  let applied = 0
+  const apply = (mesh) => {
+    if (touchUv) ensureLegUv(mesh, { force: forceUv })
+    mesh.material = mat
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    mesh.layers.enable(LIGHT_LAYERS.doors)
+    mesh.layers.enable(LIGHT_LAYERS.corpus)
+    mesh.layers.enable(LIGHT_LAYERS.accent)
+    applied += 1
+  }
+
+  collectRibbonLegMeshes(root).forEach(apply)
+
+  ;['Table_Top_Frame', 'Table_Top_Frame_back'].forEach((name) => {
+    const frame = root.getObjectByName(name)
+    if (frame?.isMesh) apply(frame)
+  })
+  return applied
+}
+
+/**
+ * Клон материала AI-фасада/боковины на ленты ∞ — те же GPU-карты,
+ * без re-UV/тайлинга (force UV давал «клетку» на лентах).
+ */
+export function applyLegSideCopperFromFacade(root, facade) {
+  const src = findFacadeCopperMaterial(facade)
+  if (!root || !src?.map) return 0
+
+  const physical = new THREE.MeshPhysicalMaterial()
+  physical.copy(src)
+  physical.name = 'M_Leg_SideCopper'
+  physical.side = THREE.DoubleSide
+  physical.color.set('#ffffff')
+  physical.metalness = Math.max(0.94, src.metalness ?? 0.7)
+  physical.roughness = Math.min(0.32, src.roughness ?? 0.45)
+  physical.envMapIntensity = 2.0
+  physical.clearcoat = 0.42
+  physical.clearcoatRoughness = 0.22
+  physical.transparent = false
+  physical.opacity = 1
+  physical.depthWrite = true
+  physical.alphaMap = null
+  if ('transmission' in physical) physical.transmission = 0
+  if ('specularIntensity' in physical) physical.specularIntensity = 0.5
+  if ('specularColor' in physical) physical.specularColor.set('#f2d2a4')
+  physical.emissive.set('#140806')
+  physical.emissiveIntensity = 0.06
+  if (physical.normalScale) physical.normalScale.set(1.55, 1.55)
+  physical.needsUpdate = true
+  // GLB UV лент оставляем как есть — ensureLegUv давал «клетку»
+  return assignLegMetalMaterial(root, physical, { touchUv: false })
+}
+
+/**
+ * Ленты ∞ — doors-ai PBR (fallback, если фасад недоступен).
+ *
+ * textures: { legMap, legNormalMap, legRoughnessMap, legMetalnessMap }
+ *   или facade-maps: { map, normalMap, metalRoughnessMap }
+ */
 export function applyLegDirtyCopper(root, textures) {
-  if (!root || !textures?.legMap) return 0
+  if (!root || !textures) return 0
+  const legMap = textures.legMap || textures.map
+  if (!legMap) return 0
+  const legNormal = textures.legNormalMap || textures.normalMap || null
+  const legMr = textures.legRoughnessMap || textures.metalRoughnessMap || textures.roughnessMap || null
+  const legMetal = textures.legMetalnessMap || textures.metalRoughnessMap || legMr
+
   const repeat = LEG_MEDALLION.legRepeat
   const mat = createForgedMetalMaterial({
-    name: 'M_Leg_SheetForge',
-    map: cloneTiled(textures.legMap, repeat),
-    normalMap: cloneTiled(textures.legNormalMap, repeat),
-    roughnessMap: cloneTiled(textures.legRoughnessMap, repeat),
-    metalnessMap: cloneTiled(textures.legMetalnessMap, repeat),
-    metalness: 0.9,
-    roughness: 0.55,
-    env: 1.25,
-    color: '#c4a07a',
+    name: 'M_Leg_SideCopper',
+    map: cloneTiled(legMap, repeat),
+    normalMap: cloneTiled(legNormal, repeat),
+    roughnessMap: cloneTiled(legMr, repeat),
+    metalnessMap: cloneTiled(legMetal, repeat),
+    metalness: 0.96,
+    roughness: 0.34,
+    env: 1.85,
+    color: '#ffffff',
+    side: THREE.DoubleSide,
   })
-  mat.normalScale.set(2.1, 2.1)
-  mat.bumpScale = 0.045
-  mat.clearcoat = 0.12
-  mat.clearcoatRoughness = 0.45
-  if ('specularIntensity' in mat) mat.specularIntensity = 0.35
-  if ('specularColor' in mat) mat.specularColor.set('#e8c090')
+  mat.normalScale.set(1.85, 1.85)
+  mat.bumpScale = 0.022
+  mat.clearcoat = 0.38
+  mat.clearcoatRoughness = 0.26
+  mat.emissive.set('#120805')
+  mat.emissiveIntensity = 0.05
+  if ('specularIntensity' in mat) mat.specularIntensity = 0.45
+  if ('specularColor' in mat) mat.specularColor.set('#f0d0a0')
   ;[mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap, mat.bumpMap].forEach((tex) => {
     if (!tex) return
     tex.anisotropy = 16
@@ -651,27 +777,8 @@ export function applyLegDirtyCopper(root, textures) {
     tex.needsUpdate = true
   })
 
-  let applied = 0
-  collectRibbonLegMeshes(root).forEach((mesh) => {
-    ensureLegUv(mesh, { force: true })
-    mesh.material = mat
-    mesh.castShadow = true
-    mesh.receiveShadow = true
-    mesh.layers.enable(LIGHT_LAYERS.doors)
-    mesh.layers.enable(LIGHT_LAYERS.corpus)
-    applied += 1
-  })
-
-  ;['Table_Top_Frame', 'Table_Top_Frame_back'].forEach((name) => {
-    const frame = root.getObjectByName(name)
-    if (!frame?.isMesh) return
-    ensureLegUv(frame, { force: true })
-    frame.material = mat
-    frame.castShadow = true
-    frame.receiveShadow = true
-    applied += 1
-  })
-  return applied
+  // doors-ai fallback: world-UV + тайлинг
+  return assignLegMetalMaterial(root, mat, { touchUv: true, forceUv: true })
 }
 
 /** Снести baked/runtime медальоны на ножках. */

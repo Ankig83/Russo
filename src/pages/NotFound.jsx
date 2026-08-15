@@ -4,16 +4,24 @@ import EditorialBackdrop from '../components/ui/EditorialBackdrop'
 /** Страница 404 */
 export default function NotFound() {
   return (
-    <div className="editorial-page flex min-h-screen flex-col items-center justify-center px-6">
+    <div className="editorial-page">
       <EditorialBackdrop />
-      <div className="editorial-panel w-full max-w-xl rounded-[2rem] px-7 py-14 text-center">
-        <p className="mb-3 text-xs tracking-[0.35em] text-[#d29a52]">404</p>
-        <h1 className="mb-4 text-3xl font-light tracking-wide">Страница не найдена</h1>
-        <p className="mb-8 text-white/50">Такого раздела пока нет.</p>
-        <Link
-          to="/"
-          className="inline-flex rounded-full border border-[#d6a15b]/30 px-7 py-3 text-xs uppercase tracking-[0.2em] text-[#f0d8b3]"
-        >
+      <div
+        className="pf-shell"
+        style={{
+          minHeight: '100dvh',
+          display: 'grid',
+          placeContent: 'center',
+          gap: 24,
+          textAlign: 'center',
+        }}
+      >
+        <p className="pf-eyebrow">404</p>
+        <h1 className="pf-display">Страница не найдена</h1>
+        <p className="pf-body" style={{ marginInline: 'auto' }}>
+          Такого раздела пока нет.
+        </p>
+        <Link to="/" className="pf-link pf-link--accent" style={{ justifyContent: 'center' }}>
           ← На главную
         </Link>
       </div>

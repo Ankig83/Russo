@@ -15,17 +15,17 @@ const FRICTION = 0.9
 const WHEEL_SENS = 0.6
 const DRAG_SENS = 1.0
 
-// Визуал (desktop / mobile)
-const MAX_ROTATION = 28
-const MAX_DEPTH = 140
-const MAX_ROTATION_M = 20
-const MAX_DEPTH_M = 90
-const MIN_SCALE = 0.92
-const SCALE_RANGE = 0.1
-const GAP = 28
+// Визуал — спокойнее «игрушечной» 3D-карусели, крупнее кадр
+const MAX_ROTATION = 16
+const MAX_DEPTH = 90
+const MAX_ROTATION_M = 12
+const MAX_DEPTH_M = 60
+const MIN_SCALE = 0.94
+const SCALE_RANGE = 0.07
+const GAP = 20
 
-// Тёмный базовый фон Руссо (в него уходят градиенты)
-const BASE_RGB = [6, 6, 6]
+// Тёмный базовый фон (cinematic stage)
+const BASE_RGB = [10, 10, 10]
 
 function mod(n, m) {
   return ((n % m) + m) % m

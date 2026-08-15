@@ -1,18 +1,16 @@
 /*
- * Портированная 3D-карусель с реактивным градиентным фоном.
- * Основа: github.com/clementgrellier/gradientslider (MIT, Clément Grellier).
- * Тёмная тема Руссо: фон уходит в чёрный, а не в белый.
+ * Галерейная карусель: фото — герой, без «золотых карточек».
+ * Топология Lambo (0 radius, dark stage) + спокойный cinematic bg.
  */
 
 .gcar-stage {
-  --gcar-perspective: 1800px;
-  --gcar-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --gcar-perspective: 1600px;
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  background: #060606;
-  color: #f2ede4;
+  background: #0a0a0a;
+  color: #f5f5f5;
   overflow: hidden;
   perspective: var(--gcar-perspective);
   overscroll-behavior: none;
@@ -33,8 +31,11 @@
   width: 100%;
   height: 100%;
   display: block;
-  filter: blur(26px) saturate(1.05);
+  /* Мягкий ambient, не радужный blur */
+  filter: blur(48px) saturate(0.55) brightness(0.55);
+  opacity: 0.55;
   pointer-events: none;
+  transform: scale(1.08);
 }
 
 .gcar-cards {
@@ -48,16 +49,13 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(26vw, 360px);
+  width: min(48vw, 560px);
   aspect-ratio: 4 / 5;
   isolation: isolate;
-  border: 1px solid rgba(226, 180, 111, 0.22);
-  border-radius: 18px;
-  background: linear-gradient(145deg, #3a2a1e, #0b0908);
-  box-shadow:
-    14px 18px 0 -8px rgba(57, 37, 22, 0.78),
-    22px 32px 70px rgba(0, 0, 0, 0.62),
-    inset 0 1px 0 rgba(255, 231, 192, 0.12);
+  border: 0;
+  border-radius: 0;
+  background: #111;
+  box-shadow: none;
   cursor: zoom-in;
   transform-style: preserve-3d;
   backface-visibility: hidden;
@@ -66,34 +64,18 @@
   contain: layout paint;
 }
 
-.gcar-card::before {
-  content: '';
-  position: absolute;
-  inset: 8px -8px -10px 8px;
-  z-index: -1;
-  border: 1px solid rgba(211, 155, 82, 0.16);
-  border-radius: inherit;
-  background: linear-gradient(135deg, rgba(95, 61, 33, 0.72), rgba(5, 5, 5, 0.88));
-  transform: translateZ(-22px);
-}
-
+.gcar-card::before,
 .gcar-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  border-radius: inherit;
-  background: linear-gradient(115deg, rgba(255, 231, 190, 0.13), transparent 24%, transparent 72%, rgba(0, 0, 0, 0.24));
-  pointer-events: none;
+  content: none;
 }
 
 .gcar-card:focus-visible {
-  outline: 2px solid rgba(225, 172, 98, 0.85);
-  outline-offset: 5px;
+  outline: 1px solid rgba(201, 164, 90, 0.85);
+  outline-offset: 6px;
 }
 
 .gcar-card__img {
-  border-radius: 17px;
+  border-radius: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -102,14 +84,11 @@
   pointer-events: none;
   -webkit-user-drag: none;
   user-select: none;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 24px 60px rgba(0, 0, 0, 0.55);
 }
 
 @media (max-width: 767px) {
   .gcar-card {
-    width: min(64vw, 320px);
+    width: min(78vw, 360px);
   }
 }
 

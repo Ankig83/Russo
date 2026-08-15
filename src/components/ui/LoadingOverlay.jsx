@@ -6,11 +6,13 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 import { russoAssetsProgress, russoOverlayPhase } from '../../utils/russoLog'
 import PreloaderCanvas from '../3d/PreloaderCanvas'
 
-/** Держим прелоадер, пока скан успеет отыграть (см. REVEAL_MS в PreloaderCanvas) */
-const MIN_SHOW_MS = 2800
-const MIN_SHOW_MS_MOBILE = 2400
+/** Короткий hold, чтобы скан/лого успели — не блокируем после ready на секунды */
+const MIN_SHOW_MS = 700
+const MIN_SHOW_MS_MOBILE = 550
 /** Если useProgress завис на active — всё равно отпускаем сцену */
 const MAX_WAIT_MS = 45000
+/** Если dock/LogoScene завис — снимаем оверлей без ожидания onDocked */
+const DOCK_FAILSAFE_MS = 1800
 
 function LoadingBar({ progress, isMobile, fadeRef }) {
   const pct = Math.round(progress)
@@ -81,6 +83,7 @@ export default function LoadingOverlay() {
   const [isLoaded, setIsLoaded] = useState(false)
   const [startMs] = useState(() => Date.now())
   const exitDone = useRef(false)
+  const fadeStarted = useRef(false)
   const hasSeenActive = useRef(false)
 
   useEffect(() => {
@@ -136,6 +139,8 @@ export default function LoadingOverlay() {
   }, [loadingDone])
 
   const handleDocked = useCallback(() => {
+    if (fadeStarted.current || loadingDone) return
+    fadeStarted.current = true
     const wrap = wrapRef.current
     const finish = () => {
       setLoadingDone()
@@ -145,14 +150,24 @@ export default function LoadingOverlay() {
     if (wrap) {
       gsap.to(wrap, {
         opacity: 0,
-        duration: 0.65,
+        duration: 0.5,
         ease: 'power2.inOut',
         onComplete: finish,
       })
     } else {
       finish()
     }
-  }, [setLoadingDone])
+  }, [setLoadingDone, loadingDone])
+
+  // Root cause зависания: isLoaded=true, но LogoScene/Suspense не вызвал onDocked
+  useEffect(() => {
+    if (!isLoaded || loadingDone || hidden) return undefined
+    const t = setTimeout(() => {
+      russoOverlayPhase('dock-failsafe')
+      handleDocked()
+    }, DOCK_FAILSAFE_MS)
+    return () => clearTimeout(t)
+  }, [isLoaded, loadingDone, hidden, handleDocked])
 
   if (hidden || loadingDone) return null
 

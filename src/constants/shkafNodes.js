@@ -2,7 +2,8 @@ const assetBase = import.meta.env.BASE_URL
 
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
-export const SHKAF_MODEL_VERSION = '44'
+/** v51 — cinematic export, hierarchy preserved (no gltf join) */
+export const SHKAF_MODEL_VERSION = '51'
 export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
 
 /** Ножки model / model.001 из нового экспорта shkaf_.glb — НЕ сжимать meshopt (scale запечён в геометрию) */
@@ -52,7 +53,7 @@ export const LEATHER_HARDWARE = {
   handleRivetEndInset: 0.01,
   handleRivetFront: 0.0015,
   /** Зазор спинки ручки от плоскости берёсты */
-  handleSeatGap: 0.0006,
+  handleSeatGap: 0.0012,
   color: '#b48445',
   roughness: 0.34,
   metalness: 0.86,
@@ -69,12 +70,16 @@ export const GLB_BACKWALL_ALIGN = {
 }
 
 /**
- * AI-фасад закрытых дверей (doors_closed.glb) — полотно + берёста + ручки.
- * Closed → этот GLB; open → door_* с теми же PBR-картами (без второго скачивания).
+ * AI-фасад закрытых дверей.
+ * Closed → нода closed_doors_facade; open → door_* с теми же PBR-картами.
+ *
+ * USE_BAKED_CLOSED_DOORS=true — фасад уже в shkaf.glb (не грузим doors-closed.glb ~90MB).
  */
 export const SHKAF_CLOSED_DOORS_VERSION = '2'
 export const SHKAF_CLOSED_DOORS_PATH = `${assetBase}models/doors-closed.glb?v=${SHKAF_CLOSED_DOORS_VERSION}`
 export const USE_CLOSED_DOORS_FACADE = true
+/** true — closed_doors_facade уже в shkaf.glb; отдельный doors-closed.glb не качаем */
+export const USE_BAKED_CLOSED_DOORS = true
 /** true — карты с фасада на лице door_* (изнанка — тёмная медь) */
 export const USE_AI_DOOR_TEXTURES = true
 export const CLOSED_DOORS_NODE_NAME = 'closed_doors_facade'
@@ -95,7 +100,19 @@ export const CLOSED_DOORS_ALIGN = {
 export const BERESTA_SEAM_HALF_GAP = 0.012
 
 /**
- * true — ножки уже в основном GLB (Table_Top_Frame + BézierCurve*).
+ * Closed facade: сдвиг каждой половины бересты к центру (только position.x).
+ * Цель — щель ≈ 5–7 мм (0.006). Было 0.014 → вплотную.
+ */
+export const BERESTA_SEAM_HALF_OVERLAP = 0.007
+
+/**
+ * false — ножки/медальон уже верные в GLB (shkaf_for_site), не fitX / snap.
+ * true — старый runtime-fit под ширину корпуса.
+ */
+export const USE_RUNTIME_LEG_FIT = false
+
+/**
+ * true — ножки уже в основном GLB (node_0* + medallion / раньше Table_Top_Frame).
  * false — подтягивать отдельно через attachGlbLegs(shkaf-legs.glb).
  */
 export const USE_BAKED_LEGS = true
@@ -185,6 +202,7 @@ export const CORPUS_REFLECTIVE_MATERIALS = [
 export const BERESTA_MATERIALS = [
   'M_Beresta_Final.001',
   'berestf_insige_M.001',
+  'berestf_insige_M.002',
   'bes=resta_W_M',
 ]
 
@@ -200,11 +218,18 @@ export const BERESTA_MATERIAL_PROFILES = {
     useNormalMap: false,
     useRoughnessMap: false,
   },
-  /** Внутренняя обивка ящиков — bereza_medallion_texture */
+  /** Внутренний круг на ящиках — береста из GLB (не wood-stain) */
   'berestf_insige_M.001': {
-    kind: 'surface',
-    roughness: 0.88,
-    repeat: [1, 1],
+    kind: 'door',
+    bumpScale: 0.1,
+    useNormalMap: true,
+    useRoughnessMap: false,
+  },
+  'berestf_insige_M.002': {
+    kind: 'door',
+    bumpScale: 0.1,
+    useNormalMap: true,
+    useRoughnessMap: false,
   },
   /** Задняя стенка Beck_W — отдельная текстура (не как на дверях) */
   'bes=resta_W_M': {
@@ -218,8 +243,8 @@ export const BERESTA_MATERIAL_PROFILES = {
 export const BERESTA_MESH_MAP = {
   Beresta_L: 'M_Beresta_Final.001',
   Beresta_R: 'M_Beresta_Final.001',
-  'Btresta_inside.001': 'berestf_insige_M.001',
-  'Btresta_inside.002': 'berestf_insige_M.001',
+  'Btresta_inside.001': 'berestf_insige_M.002',
+  'Btresta_inside.002': 'berestf_insige_M.002',
   Beck_W: 'bes=resta_W_M',
 }
 /**
@@ -263,19 +288,47 @@ export const CABINET_SCENE_ROOTS = [
   ...DOOR_PIVOT_ALIASES.left,
   ...DOOR_PIVOT_ALIASES.right,
   'Beck_W',
-  /** Новая база-∞ из shkaf_for_D.glb (вне shkaf в корне сцены) */
+  /** v45: база-∞ (старый экспорт) */
   'Table_Top_Frame',
   /** Закрытый AI-фасад (baked в основной GLB) — иначе hideSceneDecor скроет */
   'closed_doors_facade',
+  /**
+   * v46 doors_front_back.glb: корень экспорта + ножки/двери/медальоны
+   * лежат siblings в сцене (не внутри shkaf).
+   * Three.js GLTFLoader склеивает «.001» → «001» (node_0.001 → node_0001).
+   */
+  'shkaf_closed_export',
+  'node_0',
+  'node_0.001',
+  'node_0.002',
+  'node_0001',
+  'node_0002',
+  'leg_cross_medallion_logo',
+  'leg_cross_medallion_rivet_0',
+  'leg_cross_medallion_rivet_1',
+  'leg_cross_medallion_logo.001',
+  'leg_cross_medallion_rivet_0.001',
+  'leg_cross_medallion_rivet_1.001',
+  'leg_cross_medallion_logo001',
+  'leg_cross_medallion_rivet_0001',
+  'leg_cross_medallion_rivet_1001',
+  /** v47: внутренний круг бересты вынесен в корень сцены */
+  'Btresta_inside.001',
+  'Btresta_inside.002',
+  'Btresta_inside001',
+  'Btresta_inside002',
 ]
 
 /**
- * Ножки: shkaf-legs.glb (model / model.001 из shkaf_.glb).
- * Старые leg_* в shkaf.glb заменяются в attachGlbLegs до placement.
+ * Ножки в основном GLB.
+ * v46: node_0 / node_0002 (ленты), node_0001 — полотно дверей (M_ClosedDoors_AI).
  */
 export const GLB_LEG_NODES = USE_BAKED_LEGS
-  ? ['BézierCurve', 'BézierCurve.001', 'BézierCurve004', 'BézierCurve004.001', 'Table_Top_Frame']
+  ? ['node_0', 'node_0.002', 'node_0002', 'BézierCurve', 'BézierCurve.001', 'BézierCurve004', 'BézierCurve004.001', 'Table_Top_Frame']
   : ['leg_front_o', 'leg_letter_o']
+
+/** Top-level siblings шкафа в v46+ (после sanitization имён GLTFLoader) */
+export const CABINET_SCENE_ROOT_RE = /^(shkaf|node_0|leg_cross_medallion|closed_doors|Table_Top|door_|Btresta_inside)/i
 /**
  * Позиции ножек на узле shkaf — из shkaf-legs.glb (геометрия центрирована в mesh,
  * в отличие от main shkaf.glb где offset вшит в вершины).
