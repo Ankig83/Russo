@@ -2,8 +2,8 @@ const assetBase = import.meta.env.BASE_URL
 
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
-/** v51 — cinematic export, hierarchy preserved (no gltf join) */
-export const SHKAF_MODEL_VERSION = '51'
+/** v54 — Cube frames: bevel + matching TRS (fix Cube.001 origin mismatch) */
+export const SHKAF_MODEL_VERSION = '54'
 export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
 
 /** Ножки model / model.001 из нового экспорта shkaf_.glb — НЕ сжимать meshopt (scale запечён в геометрию) */
@@ -292,6 +292,11 @@ export const CABINET_SCENE_ROOTS = [
   'Table_Top_Frame',
   /** Закрытый AI-фасад (baked в основной GLB) — иначе hideSceneDecor скроет */
   'closed_doors_facade',
+  /** Внутренний каркас дверок (Cube / Cube.001) */
+  'Cube',
+  'Cube.001',
+  'door_inner_frame_L',
+  'door_inner_frame_R',
   /**
    * v46 doors_front_back.glb: корень экспорта + ножки/двери/медальоны
    * лежат siblings в сцене (не внутри shkaf).
