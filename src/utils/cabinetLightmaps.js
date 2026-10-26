@@ -20,10 +20,14 @@ function collectNamed(root, name) {
   return found
 }
 
+function isPrimitiveSplit(parentName, mesh) {
+  const name = mesh.name || ''
+  return name === parentName || name.startsWith(`${parentName}_`) || /^Mesh_\d+/.test(name)
+}
+
 function meshesOf(node) {
-  const own = node.children.filter((child) => child.isMesh)
-  if (node.isMesh) return [node, ...own]
-  return own
+  if (node.isMesh) return [node]
+  return node.children.filter((child) => child.isMesh && isPrimitiveSplit(node.name, child))
 }
 
 function uvBounds(attr) {
