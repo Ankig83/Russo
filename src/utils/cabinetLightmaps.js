@@ -21,12 +21,9 @@ function collectNamed(root, name) {
 }
 
 function meshesOf(node) {
-  if (node.isMesh) return [node]
-  const meshes = []
-  node.traverse((obj) => {
-    if (obj.isMesh) meshes.push(obj)
-  })
-  return meshes
+  const own = node.children.filter((child) => child.isMesh)
+  if (node.isMesh) return [node, ...own]
+  return own
 }
 
 function uvBounds(attr) {
@@ -117,10 +114,9 @@ function prepareTexture(tex, gl) {
 function loadOne(file, gl) {
   if (!cache.has(file)) {
     const url = `${assetBase}textures/cycles-bake/lm/${file}`
-    cache.set(
-      file,
-      loader.loadAsync(url).then((tex) => prepareTexture(tex, gl)),
-    )
+    const pending = loader.loadAsync(url).then((tex) => prepareTexture(tex, gl))
+    pending.catch(() => cache.delete(file))
+    cache.set(file, pending)
   }
   return cache.get(file).then((tex) => prepareTexture(tex, gl))
 }

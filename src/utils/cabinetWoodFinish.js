@@ -150,7 +150,9 @@ export function loadWalnutBake() {
     Object.entries(urls).map(async ([key, url]) => {
       try {
         const res = await fetch(url, { method: 'HEAD' })
-        return [key, res.ok ? url : null]
+        const type = res.headers.get('content-type') || ''
+        const png = res.ok && !type.includes('text/html')
+        return [key, png ? url : null]
       } catch {
         return [key, null]
       }
