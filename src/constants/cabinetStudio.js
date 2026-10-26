@@ -142,7 +142,8 @@ export const CABINET_LOOK = {
 
 export const CABINET_BACKGROUND = '#000000'
 
-export const CABINET_EXPOSURE = 1.05
+/** 1, не экспозиция кадра. Кадр множит CABINET_LOOK.tone.exposure до AgX. */
+export const CABINET_EXPOSURE = 1
 
 /**
  * Циклорама из studio-scene.glb целиком (пол + ков + стена).

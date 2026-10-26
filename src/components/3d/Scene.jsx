@@ -1,7 +1,8 @@
 import React, { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { PerspectiveCamera, OrbitControls, Environment, useProgress } from '@react-three/drei'
-import { EffectComposer, Vignette, BrightnessContrast, HueSaturation, N8AO, Bloom } from '@react-three/postprocessing'
+import { EffectComposer, Vignette, BrightnessContrast, HueSaturation, N8AO, Bloom, ToneMapping } from '@react-three/postprocessing'
+import { ToneMappingMode } from 'postprocessing'
 import * as THREE from 'three'
 import Shkaf from './Shkaf'
 import Loader from './Loader'
@@ -19,6 +20,13 @@ import {
   getCabinetOrbit,
 } from '../../constants/cabinetStudio'
 import { cabinetFlags } from '../../utils/cabinetQuery'
+import { Exposure } from './ExposureEffect'
+
+const TONE_MODE = {
+  agx: ToneMappingMode.AGX,
+  aces: ToneMappingMode.ACES_FILMIC,
+  neutral: ToneMappingMode.NEUTRAL,
+}
 import { russoCanvasReady, russoLog } from '../../utils/russoLog'
 
 function handleCanvasCreated({ gl, scene }) {
@@ -275,15 +283,17 @@ export default function Scene() {
                   mipmapBlur
                 />
               )}
-              <Vignette
-                offset={CABINET_POST.vignetteOffset}
-                darkness={CABINET_POST.vignetteDarkness}
-              />
+              <Exposure exposure={CABINET_LOOK.tone.exposure} />
+              <ToneMapping mode={TONE_MODE[flags.tone] ?? ToneMappingMode.AGX} />
               <BrightnessContrast
                 contrast={CABINET_POST.contrast}
                 brightness={CABINET_POST.brightness}
               />
               <HueSaturation saturation={CABINET_POST.saturation} />
+              <Vignette
+                offset={CABINET_POST.vignetteOffset}
+                darkness={CABINET_POST.vignetteDarkness}
+              />
             </EffectComposer>
           )}
         </Canvas>
