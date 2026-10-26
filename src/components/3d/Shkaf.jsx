@@ -24,7 +24,7 @@ import { applyHingeLegMaterial, hideCabinetHinges } from '../../utils/bronzeText
 import { applyAgedCopperToCorpus, loadAgedCopperTextures } from '../../utils/agedCopperTextures'
 import { applyDrawerLeatherRims, loadLeatherTextures } from '../../utils/leatherTextures'
 import DoorMirrors from './DoorMirrors'
-import { finishCabinetWood } from '../../utils/cabinetWoodFinish'
+import { applyWalnutBake, finishCabinetWood, loadWalnutBake } from '../../utils/cabinetWoodFinish'
 import { applyCabinetLightmaps, loadCabinetLightmaps } from '../../utils/cabinetLightmaps'
 import { applyCabinetEnv } from '../../utils/cabinetEnv'
 import { CABINET_LOOK } from '../../constants/cabinetStudio'
@@ -201,6 +201,23 @@ export default function Shkaf() {
     if (!environment) return
     applyCabinetEnv(model, environment)
   }, [environment, model, scene])
+
+  useEffect(() => {
+    let cancelled = false
+    loadWalnutBake()
+      .then((textures) => {
+        if (cancelled || !textures) return
+        const walnut = applyWalnutBake(model, textures)
+        applyCabinetEnv(model, scene.environment)
+        russoLog('info', 'shkaf', 'walnut bake', { walnut })
+      })
+      .catch((err) => {
+        console.warn('[walnut] не удалось прочитать PNG', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [model, scene])
 
   useEffect(() => {
     let cancelled = false
