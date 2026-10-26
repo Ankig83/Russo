@@ -119,6 +119,45 @@ class WebGLErrorBoundary extends React.Component {
   }
 }
 
+function CompareCamera() {
+  const camera = useThree((s) => s.camera)
+  const controls = useThree((s) => s.controls)
+  const shot = CABINET_LOOK.compare
+
+  useLayoutEffect(() => {
+    if (!camera) return undefined
+    const apply = () => {
+      const fov = THREE.MathUtils.radToDeg(
+        2 * Math.atan(shot.sensorHeight / (2 * shot.focalLength)),
+      )
+      camera.fov = fov
+      camera.near = 0.05
+      camera.far = 100
+      camera.position.set(shot.position[0], shot.position[1], shot.position[2])
+      camera.updateProjectionMatrix()
+      if (!controls) return
+      const dist = shot.targetDistance
+      controls.target.set(
+        shot.position[0] + shot.forward[0] * dist,
+        shot.position[1] + shot.forward[1] * dist,
+        shot.position[2] + shot.forward[2] * dist,
+      )
+      controls.minDistance = 0.2
+      controls.maxDistance = 40
+      controls.minPolarAngle = 0.01
+      controls.maxPolarAngle = Math.PI - 0.01
+      controls.minAzimuthAngle = -Infinity
+      controls.maxAzimuthAngle = Infinity
+      controls.update()
+    }
+    apply()
+    const raf = requestAnimationFrame(apply)
+    return () => cancelAnimationFrame(raf)
+  }, [camera, controls, shot])
+
+  return null
+}
+
 function StudioCameraSync({ position, target }) {
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls)
@@ -246,7 +285,11 @@ export default function Scene() {
                 : undefined
             }
           />
-          <StudioCameraSync position={camera.position} target={camera.target} />
+          {flags.compare ? (
+            <CompareCamera />
+          ) : (
+            <StudioCameraSync position={camera.position} target={camera.target} />
+          )}
 
           <CabinetLights shadowMapSize={perf.shadowMapSize} />
 

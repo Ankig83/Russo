@@ -28,6 +28,7 @@ import { applyWalnutBake, finishCabinetWood, loadWalnutBake } from '../../utils/
 import { applyCabinetLightmaps, loadCabinetLightmaps } from '../../utils/cabinetLightmaps'
 import { applyCabinetEnv } from '../../utils/cabinetEnv'
 import { CABINET_LOOK } from '../../constants/cabinetStudio'
+import { cabinetFlags } from '../../utils/cabinetQuery'
 import { russoLog } from '../../utils/russoLog'
 
 const DRAG_THRESHOLD_DESKTOP_PX = 8
@@ -156,6 +157,12 @@ export default function Shkaf() {
       right.rotation.set(0, 0, 0)
       snapDoorPivotToHinge(right, model.getObjectByName('hinge_right_2_body'))
       closedRotations.current.right = 0
+    }
+    if (cabinetFlags().compare) {
+      const axis = DOOR_ROTATION_AXIS
+      if (left) left.rotation[axis] = DOOR_LEFT_OPEN_ANGLE
+      if (right) right.rotation[axis] = DOOR_RIGHT_OPEN_ANGLE
+      setDoorsOpen(true)
     }
     hideCabinetHinges(model)
     russoLog('info', 'shkaf', 'new cabinet loaded', {

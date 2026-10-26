@@ -5,6 +5,7 @@ import DebugHud from '../components/ui/DebugHud'
 import ActiveSectionTitle from '../components/ui/ActiveSectionTitle'
 import { useShkafStore } from '../store/shkafStore'
 import { russoLog, russoPatch } from '../utils/russoLog'
+import { cabinetFlags } from '../utils/cabinetQuery'
 
 /** Canvas/R3F — отдельный чанк; UI shell монтируется сразу */
 const Scene = lazy(() => import('../components/3d/Scene'))
@@ -12,12 +13,14 @@ const Scene = lazy(() => import('../components/3d/Scene'))
 /** Главная страница с интерактивным 3D-шкафом */
 export default function Home() {
   const reset = useShkafStore((s) => s.reset)
+  const compare = cabinetFlags().compare
 
   // Сброс состояния шкафа при возврате на главную
   useEffect(() => {
     reset()
+    if (cabinetFlags().compare) useShkafStore.setState({ doorsOpen: true })
     russoPatch({
-      doorsOpen: false,
+      doorsOpen: cabinetFlags().compare,
       animating: false,
       activeDrawerId: null,
       lastEvent: 'home reset',
@@ -30,10 +33,10 @@ export default function Home() {
       <Suspense fallback={null}>
         <Scene />
       </Suspense>
-      <ActiveSectionTitle />
-      <Header />
-      <LoadingOverlay />
-      <DebugHud />
+      {!compare && <ActiveSectionTitle />}
+      {!compare && <Header />}
+      {!compare && <LoadingOverlay />}
+      {!compare && <DebugHud />}
     </div>
   )
 }
