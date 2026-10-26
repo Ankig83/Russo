@@ -26,6 +26,8 @@ import { applyDrawerLeatherRims, loadLeatherTextures } from '../../utils/leather
 import DoorMirrors from './DoorMirrors'
 import { finishCabinetWood } from '../../utils/cabinetWoodFinish'
 import { applyCabinetLightmaps, loadCabinetLightmaps } from '../../utils/cabinetLightmaps'
+import { applyCabinetEnv } from '../../utils/cabinetEnv'
+import { CABINET_LOOK } from '../../constants/cabinetStudio'
 import { russoLog } from '../../utils/russoLog'
 
 const DRAG_THRESHOLD_DESKTOP_PX = 8
@@ -118,7 +120,8 @@ export default function Shkaf() {
   const navigate = useNavigate()
   const gltf = useGLTF(SHKAF_MODEL_PATH, true, true)
   const model = useMemo(() => gltf.scene.clone(true), [gltf.scene])
-  const { gl, camera } = useThree()
+  const { gl, camera, scene } = useThree()
+  const environment = useThree((s) => s.scene.environment)
   const [agedCopper, setAgedCopper] = useState(null)
 
   const doorsOpen = useShkafStore((s) => s.doorsOpen)
@@ -181,7 +184,9 @@ export default function Shkaf() {
       })
       .then((lightmaps) => {
         if (cancelled || !lightmaps) return
-        russoLog('info', 'shkaf', 'lightmaps', lightmaps)
+        scene.environmentIntensity = CABINET_LOOK.environmentIntensity
+        const env = applyCabinetEnv(model, scene.environment)
+        russoLog('info', 'shkaf', 'lightmaps', { ...lightmaps, env })
       })
       .catch((err) => {
         russoLog('warn', 'shkaf', 'lightmaps failed', { err: String(err) })
@@ -189,7 +194,13 @@ export default function Shkaf() {
     return () => {
       cancelled = true
     }
-  }, [gl, model])
+  }, [gl, model, scene])
+
+  useLayoutEffect(() => {
+    scene.environmentIntensity = CABINET_LOOK.environmentIntensity
+    if (!environment) return
+    applyCabinetEnv(model, environment)
+  }, [environment, model, scene])
 
   useEffect(() => {
     let cancelled = false

@@ -56,7 +56,9 @@ export const CABINET_ORBIT = {
 
 export const CABINET_ENV = {
   url: `${assetBase}textures/cycles-bake/studio_cycles_2k_raw.hdr`,
-  intensity: 0.12,
+  get intensity() {
+    return CABINET_LOOK.environmentIntensity
+  },
   background: false,
 }
 
