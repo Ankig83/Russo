@@ -1,52 +1,44 @@
 import React, { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { PerspectiveCamera, ContactShadows, OrbitControls, useProgress } from '@react-three/drei'
-import { EffectComposer, Vignette, BrightnessContrast, HueSaturation, N8AO, Bloom, Noise } from '@react-three/postprocessing'
+import { Canvas, useThree } from '@react-three/fiber'
+import { PerspectiveCamera, OrbitControls, Environment, useProgress } from '@react-three/drei'
+import { EffectComposer, Vignette, BrightnessContrast, HueSaturation, N8AO, Bloom } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import Shkaf from './Shkaf'
 import Loader from './Loader'
-import StudioBackdrop from './StudioBackdrop'
-import StudioEnvironment from './StudioEnvironment'
-import StudioHorizon from './StudioHorizon'
-import HeroBackdrop from './HeroBackdrop'
-import ReflectiveFloor from './ReflectiveFloor'
-import StudioLights from './StudioLights'
-import StudioShadowLight from './StudioShadowLight'
+import CabinetLights from './CabinetLights'
+import StudioSceneMesh from './StudioSceneMesh'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useStudioPerformance } from '../../hooks/useStudioPerformance'
-import { DESKTOP_SCALE, MOBILE_SCALE } from '../../constants/shkaf'
-import { SCENE_BG_STYLE, SCENE_CANVAS_BG, TONE_MAPPING_EXPOSURE } from '../../constants/scene'
-import { STUDIO, getStudioCameraConfig, getStudioOrbitConfig, getStudioCameraStartDistance, DEBUG_LOG_CAMERA_POSITION, USE_HDRI_ONLY, LIGHT_LAYERS, USE_REFERENCE_VOID_LOOK, REFERENCE_VOID, USE_HERO_LOOK, HERO, HERO_LIGHTBOX_ONLY, USE_NO_LIGHTS, getEffectiveSplitCorpusLight, USE_STUDIO_CAMERA } from '../../constants/studioScene'
-import { russoCanvasReady, russoLog, russoPatch } from '../../utils/russoLog'
+import {
+  CABINET_BACKGROUND,
+  CABINET_ENV,
+  CABINET_EXPOSURE,
+  CABINET_LOOK,
+  CABINET_POST,
+  getCabinetCamera,
+  getCabinetOrbit,
+} from '../../constants/cabinetStudio'
+import { cabinetFlags } from '../../utils/cabinetQuery'
+import { russoCanvasReady, russoLog } from '../../utils/russoLog'
 
-/** Gallery mode: только четыре источника HeroBackdrop */
-const lightboxOnly = USE_HERO_LOOK && HERO_LIGHTBOX_ONLY
-const noLights = USE_NO_LIGHTS
-
-/** Камера по умолчанию рендерит только layer 0 — без этого корпус (layer 1) невидим */
-function EnableViewLayers() {
-  const camera = useThree((s) => s.camera)
-
-  useEffect(() => {
-    camera.layers.enable(LIGHT_LAYERS.doors)
-    camera.layers.enable(LIGHT_LAYERS.corpus)
-    camera.layers.enable(LIGHT_LAYERS.accent)
-    camera.layers.enable(LIGHT_LAYERS.interior)
-    camera.layers.enable(LIGHT_LAYERS.floor)
-  }, [camera])
-
-  return null
+function handleCanvasCreated({ gl, scene }) {
+  gl.outputColorSpace = THREE.SRGBColorSpace
+  gl.toneMapping = THREE.ACESFilmicToneMapping
+  gl.toneMappingExposure = CABINET_EXPOSURE
+  gl.shadowMap.enabled = true
+  gl.shadowMap.type = THREE.PCFSoftShadowMap
+  gl.dithering = true
+  scene.background = new THREE.Color(CABINET_BACKGROUND)
+  russoCanvasReady()
 }
 
-function GlProfile({ perf }) {
+function GlProfile() {
   const gl = useThree((s) => s.gl)
 
   useEffect(() => {
-    gl.shadowMap.type = perf.pcfSoftShadows
-      ? THREE.VSMShadowMap
-      : THREE.PCFShadowMap
+    gl.shadowMap.type = THREE.PCFSoftShadowMap
     gl.shadowMap.needsUpdate = true
-  }, [gl, perf.pcfSoftShadows])
+  }, [gl])
 
   return null
 }
@@ -61,30 +53,6 @@ function CanvasLoader() {
   )
 }
 
-function handleCanvasCreated({ gl, scene }) {
-  const bg = USE_HERO_LOOK
-    ? HERO.background
-    : USE_REFERENCE_VOID_LOOK
-      ? REFERENCE_VOID.background
-      : STUDIO.backdrop.wallTopColor
-  const exposure = USE_HERO_LOOK && HERO.toneMappingExposure != null
-    ? HERO.toneMappingExposure
-    : USE_REFERENCE_VOID_LOOK
-      ? REFERENCE_VOID.toneMappingExposure
-      : TONE_MAPPING_EXPOSURE
-
-  gl.outputColorSpace = THREE.SRGBColorSpace
-  gl.toneMapping = THREE.ACESFilmicToneMapping
-  gl.toneMappingExposure = exposure
-  gl.shadowMap.enabled = !USE_NO_LIGHTS
-    && (!USE_REFERENCE_VOID_LOOK || REFERENCE_VOID.directionalShadow)
-  gl.shadowMap.type = THREE.PCFSoftShadowMap
-  gl.dithering = true
-  scene.environment = null
-  scene.background = new THREE.Color(bg)
-  russoCanvasReady()
-}
-
 function WebGLContextMonitor() {
   const gl = useThree((s) => s.gl)
 
@@ -95,7 +63,6 @@ function WebGLContextMonitor() {
       russoLog('error', 'scene', 'WebGL context lost — закрой вкладку и открой заново')
       window.dispatchEvent(new CustomEvent('russo:webgl-lost'))
     }
-
     canvas.addEventListener('webglcontextlost', onContextLost)
     return () => canvas.removeEventListener('webglcontextlost', onContextLost)
   }, [gl])
@@ -111,7 +78,7 @@ function WebGLFallback() {
       </p>
       <p className="text-xs text-neutral-600">
         Закрой вкладку полностью и открой{' '}
-        <span className="font-mono">localhost:5173</span> заново. Обычного F5 может быть мало.
+        <span className="font-mono">localhost:5173</span> заново.
       </p>
       <button
         type="button"
@@ -144,161 +111,26 @@ class WebGLErrorBoundary extends React.Component {
   }
 }
 
-/** Жёстко выставляет STUDIO.camera после OrbitControls — иначе старт съезжает. */
 function StudioCameraSync({ position, target }) {
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls)
 
   useLayoutEffect(() => {
     if (!camera || !controls) return undefined
-
+    camera.layers.enable(1)
     const apply = () => {
       camera.position.set(position[0], position[1], position[2])
       controls.target.set(target[0], target[1], target[2])
       controls.update()
       camera.updateProjectionMatrix()
     }
-
     apply()
     const raf1 = requestAnimationFrame(() => {
       apply()
       requestAnimationFrame(apply)
     })
-
     return () => cancelAnimationFrame(raf1)
   }, [camera, controls, position, target])
-
-  return null
-}
-
-/** Clamp pan/zoom: target и высота камеры не уходят под пол / слишком вверх */
-function StudioOrbitLimits({ startTarget, limits, startDistance }) {
-  const controls = useThree((s) => s.controls)
-  const camera = useThree((s) => s.camera)
-
-  useFrame(() => {
-    if (!controls?.target || !limits) return
-    if (controls.enabled === false) return
-
-    const [sx, sy, sz] = startTarget
-    const { targetOffset, targetMinOffset, targetMaxOffset, minCameraY, maxCameraY } = limits
-
-    const dist = camera.position.distanceTo(controls.target)
-    const zoomT =
-      startDistance > 0
-        ? THREE.MathUtils.clamp(1 - dist / startDistance, 0, 1)
-        : 0
-    const zoomPanBoost = 1 + zoomT * 0.9
-
-    const minOff = targetMinOffset || targetOffset
-    const maxOff = targetMaxOffset || targetOffset
-
-    if (minOff || maxOff) {
-      if (minOff) {
-        controls.target.x = THREE.MathUtils.clamp(
-          controls.target.x,
-          sx - minOff.x * zoomPanBoost,
-          sx + (maxOff?.x ?? minOff.x) * zoomPanBoost,
-        )
-        controls.target.y = THREE.MathUtils.clamp(
-          controls.target.y,
-          sy - minOff.y * zoomPanBoost,
-          sy + (maxOff?.y ?? minOff.y) * zoomPanBoost,
-        )
-        controls.target.z = THREE.MathUtils.clamp(
-          controls.target.z,
-          sz - minOff.z * zoomPanBoost,
-          sz + (maxOff?.z ?? minOff.z) * zoomPanBoost,
-        )
-      }
-    } else if (targetOffset) {
-      controls.target.x = THREE.MathUtils.clamp(
-        controls.target.x,
-        sx - targetOffset.x,
-        sx + targetOffset.x,
-      )
-      controls.target.y = THREE.MathUtils.clamp(
-        controls.target.y,
-        sy - targetOffset.y,
-        sy + targetOffset.y,
-      )
-      controls.target.z = THREE.MathUtils.clamp(
-        controls.target.z,
-        sz - targetOffset.z,
-        sz + targetOffset.z,
-      )
-    }
-
-    if (minCameraY != null) {
-      camera.position.y = Math.max(camera.position.y, minCameraY)
-    }
-    if (maxCameraY != null) {
-      camera.position.y = Math.min(camera.position.y, maxCameraY)
-    }
-
-    controls.update()
-  })
-
-  return null
-}
-
-function LogStudioCameraStart() {
-  const camera = useThree((s) => s.camera)
-  const controls = useThree((s) => s.controls)
-  const logged = useRef(false)
-
-  useEffect(() => {
-    if (!DEBUG_LOG_CAMERA_POSITION || logged.current) return undefined
-
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (logged.current) return
-        logged.current = true
-        const t = controls?.target
-        console.log(
-          '[STUDIO camera start] position',
-          camera.position.x.toFixed(2),
-          camera.position.y.toFixed(2),
-          camera.position.z.toFixed(2),
-          '| target',
-          t
-            ? `${t.x.toFixed(2)} ${t.y.toFixed(2)} ${t.z.toFixed(2)}`
-            : STUDIO.camera.target.join(' '),
-        )
-      })
-    })
-
-    return () => cancelAnimationFrame(raf)
-  }, [camera, controls])
-
-  return null
-}
-
-/** Live camera → DebugHud (pos / target / dist) */
-function CameraHudTracker() {
-  const camera = useThree((s) => s.camera)
-  const controls = useThree((s) => s.controls)
-  const last = useRef('')
-
-  useFrame(() => {
-    if (!camera) return
-    const t = controls?.target
-    const px = camera.position.x.toFixed(2)
-    const py = camera.position.y.toFixed(2)
-    const pz = camera.position.z.toFixed(2)
-    const tx = t ? t.x.toFixed(2) : '—'
-    const ty = t ? t.y.toFixed(2) : '—'
-    const tz = t ? t.z.toFixed(2) : '—'
-    const dist = t ? camera.position.distanceTo(t).toFixed(2) : '—'
-    const key = `${px},${py},${pz}|${tx},${ty},${tz}|${dist}`
-    if (key === last.current) return
-    last.current = key
-    russoPatch({
-      cameraPos: `${px} ${py} ${pz}`,
-      cameraTarget: `${tx} ${ty} ${tz}`,
-      cameraDist: dist,
-    })
-  })
 
   return null
 }
@@ -306,35 +138,12 @@ function CameraHudTracker() {
 export default function Scene() {
   const isMobile = useIsMobile()
   const perf = useStudioPerformance()
-  const scale = isMobile ? MOBILE_SCALE : DESKTOP_SCALE
-  const refVoid = USE_REFERENCE_VOID_LOOK
-  const camera = refVoid ? REFERENCE_VOID.camera : getStudioCameraConfig(isMobile)
-  const orbit = refVoid ? REFERENCE_VOID.orbit : getStudioOrbitConfig(isMobile)
-  const startDistance = getStudioCameraStartDistance(camera)
-  /** Нельзя резать maxDistance стартом — иначе зум/отдаление «мёртвые» */
-  const maxOrbitDistance = Math.max(orbit.maxDistance ?? startDistance, startDistance)
-  const object = STUDIO.object
-  const shadow = USE_HERO_LOOK && HERO.contactShadow
-    ? { ...STUDIO.shadow, ...HERO.contactShadow }
-    : STUDIO.shadow
-  const postprocessing = USE_HERO_LOOK && HERO.postprocessing
-    ? { ...STUDIO.postprocessing, ...HERO.postprocessing }
-    : refVoid
-      ? { ...STUDIO.postprocessing, ...REFERENCE_VOID.postprocessing }
-      : STUDIO.postprocessing
-  const canvasBg = USE_HERO_LOOK
-    ? HERO.background
-    : refVoid
-      ? REFERENCE_VOID.background
-      : SCENE_CANVAS_BG
-  const toneExposure = USE_HERO_LOOK && HERO.toneMappingExposure != null
-    ? HERO.toneMappingExposure
-    : refVoid
-      ? REFERENCE_VOID.toneMappingExposure
-      : TONE_MAPPING_EXPOSURE
+  const flags = cabinetFlags()
+  const camera = getCabinetCamera(isMobile)
+  const orbit = getCabinetOrbit(isMobile)
   const [webglLost, setWebglLost] = useState(false)
-  /** Тяжёлый postFX после первого paint — не блокирует появление шкафа */
   const [postFxReady, setPostFxReady] = useState(false)
+
   useEffect(() => {
     let cancelled = false
     let frames = 0
@@ -356,194 +165,128 @@ export default function Scene() {
   }, [])
 
   useEffect(() => {
-    if (import.meta.env.DEV) {
-      console.info(
-        refVoid
-          ? 'РУССО: reference void look (чёрная пустота)'
-          : `РУССО: perf tier "${perf.tier}" (dpr≤${perf.dpr[1]}, n8ao=${perf.n8ao}, bloom=${perf.bloom})`,
-      )
-    }
-  }, [perf, refVoid])
-
-  useEffect(() => {
     const onLost = () => setWebglLost(true)
-    const onRejection = (event) => {
-      const msg = String(event.reason?.message ?? event.reason ?? '')
-      if (/webgl|WebGL|context/i.test(msg)) setWebglLost(true)
-    }
     window.addEventListener('russo:webgl-lost', onLost)
-    window.addEventListener('unhandledrejection', onRejection)
-    return () => {
-      window.removeEventListener('russo:webgl-lost', onLost)
-      window.removeEventListener('unhandledrejection', onRejection)
-    }
+    return () => window.removeEventListener('russo:webgl-lost', onLost)
   }, [])
 
   if (webglLost) {
     return (
-      <div className="absolute inset-0 h-full w-full" style={{ background: canvasBg }}>
+      <div className="absolute inset-0 h-full w-full" style={{ background: CABINET_BACKGROUND }}>
         <WebGLFallback />
       </div>
     )
   }
 
-  const contactResolution = perf.contactShadowResolution ?? shadow.resolution
-
   return (
     <div
       className="absolute inset-0 h-full w-full"
-      style={{ ...SCENE_BG_STYLE, background: canvasBg }}
+      style={{ background: CABINET_BACKGROUND, width: '100vw', height: '100dvh', minHeight: '100vh' }}
     >
       <CanvasLoader />
 
       <WebGLErrorBoundary fallback={<WebGLFallback />}>
-      <Canvas
-        shadows={!refVoid || REFERENCE_VOID.directionalShadow}
-        dpr={perf.dpr}
-        gl={{
-          powerPreference: 'default',
-          antialias: perf.antialias,
-          alpha: false,
-          toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: toneExposure,
-        }}
-        onCreated={handleCanvasCreated}
-        style={{
-          width: '100vw',
-          height: '100dvh',
-          minHeight: '100vh',
-          display: 'block',
-          background: canvasBg,
-          touchAction: 'none',
-        }}
-      >
-        <color attach="background" args={[canvasBg]} />
-        <GlProfile perf={perf} />
-        <WebGLContextMonitor />
+        <Canvas
+          shadows
+          dpr={perf.dpr}
+          gl={{
+            powerPreference: 'default',
+            antialias: perf.antialias,
+            alpha: false,
+            toneMapping: THREE.ACESFilmicToneMapping,
+            toneMappingExposure: CABINET_EXPOSURE,
+          }}
+          onCreated={handleCanvasCreated}
+          style={{
+            width: '100vw',
+            height: '100dvh',
+            minHeight: '100vh',
+            display: 'block',
+            background: CABINET_BACKGROUND,
+            touchAction: 'none',
+          }}
+        >
+          <color attach="background" args={[CABINET_BACKGROUND]} />
+          <GlProfile />
+          <WebGLContextMonitor />
 
-        <PerspectiveCamera
-          makeDefault
-          fov={camera.fov}
-          near={0.05}
-          far={200}
-        />
-        <EnableViewLayers />
-        <OrbitControls
-          makeDefault
-          target={camera.target}
-          enablePan={orbit.enablePan ?? true}
-          enableZoom
-          screenSpacePanning
-          rotateSpeed={orbit.rotateSpeed ?? 1}
-          zoomSpeed={orbit.zoomSpeed ?? 1}
-          panSpeed={orbit.panSpeed ?? 1}
-          minAzimuthAngle={orbit.minAzimuth}
-          maxAzimuthAngle={orbit.maxAzimuth}
-          minPolarAngle={orbit.minPolar}
-          maxPolarAngle={orbit.maxPolar}
-          minDistance={orbit.minDistance}
-          maxDistance={maxOrbitDistance}
-          touches={
-            isMobile
-              ? { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
-              : undefined
-          }
-          onChange={
-            DEBUG_LOG_CAMERA_POSITION
-              ? (e) => {
-                  const pos = e?.target?.object?.position
-                  if (pos) {
-                    console.log(
-                      '[STUDIO camera]',
-                      pos.x.toFixed(2),
-                      pos.y.toFixed(2),
-                      pos.z.toFixed(2),
-                    )
-                  }
-                }
-              : undefined
-          }
-        />
-        {USE_STUDIO_CAMERA && !refVoid && orbit.panLimits && (
-          <StudioOrbitLimits
-            startTarget={camera.target}
-            limits={orbit.panLimits}
-            startDistance={startDistance}
+          <PerspectiveCamera
+            makeDefault
+            fov={camera.fov}
+            near={camera.near}
+            far={camera.far}
+            position={camera.position}
           />
-        )}
-        <StudioCameraSync position={camera.position} target={camera.target} />
-        {DEBUG_LOG_CAMERA_POSITION && <LogStudioCameraStart />}
-        <CameraHudTracker />
+          <OrbitControls
+            makeDefault
+            target={camera.target}
+            enablePan={orbit.enablePan}
+            enableZoom
+            screenSpacePanning
+            rotateSpeed={orbit.rotateSpeed}
+            zoomSpeed={orbit.zoomSpeed}
+            panSpeed={orbit.panSpeed}
+            minAzimuthAngle={orbit.minAzimuth}
+            maxAzimuthAngle={orbit.maxAzimuth}
+            minPolarAngle={orbit.minPolar}
+            maxPolarAngle={orbit.maxPolar}
+            minDistance={orbit.minDistance}
+            maxDistance={orbit.maxDistance}
+            touches={
+              isMobile
+                ? { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+                : undefined
+            }
+          />
+          <StudioCameraSync position={camera.position} target={camera.target} />
 
-        {!noLights && USE_HERO_LOOK && <HeroBackdrop />}
-        {!noLights && !lightboxOnly && (!USE_HDRI_ONLY || refVoid) && <StudioLights />}
-        {/* В hero тень на пол рисует key-spot из HeroBackdrop — второй shadow-spot дал бы двойную тень */}
-        {!noLights && !USE_HERO_LOOK && !lightboxOnly && !refVoid && <StudioShadowLight />}
+          <CabinetLights shadowMapSize={perf.shadowMapSize} />
 
-        <Suspense fallback={null}>
-          {(!refVoid || REFERENCE_VOID.showBackdrop) && !USE_HERO_LOOK && <StudioBackdrop />}
-          {/* Hero: IBL из HERO.env (фон чёрный). Studio: STUDIO.env. */}
-          {!noLights && (USE_HERO_LOOK
-            ? Boolean(HERO.env)
-            : (!lightboxOnly && (!refVoid || REFERENCE_VOID.showEnvironment))) && (
-            <StudioEnvironment />
-          )}
-          {USE_HERO_LOOK
-            ? <ReflectiveFloor />
-            : (!refVoid || REFERENCE_VOID.showHorizon) && <StudioHorizon />}
-          <group scale={scale} position={object.position}>
-            <Shkaf sceneScale={scale} />
-          </group>
-          {/* Hero: ContactShadows давал чёрный прямоугольник на полу (квадрат plane).
-              Контакт под ножками — shadowMaterial пола + soft key-spot. */}
-          {!USE_HERO_LOOK && (!refVoid || REFERENCE_VOID.contactShadows) && (
-            <ContactShadows
-              position={shadow.position}
-              opacity={shadow.opacity}
-              blur={shadow.blur}
-              far={shadow.far}
-              resolution={contactResolution}
-              scale={shadow.scale}
-              color={shadow.color}
+          <Suspense fallback={null}>
+            <Environment
+              files={CABINET_ENV.url}
+              environmentIntensity={CABINET_ENV.intensity}
+              background={false}
             />
-          )}
-        </Suspense>
+            <StudioSceneMesh />
+            <Shkaf />
+          </Suspense>
 
-        {postFxReady && perf.postFX && !(refVoid && REFERENCE_VOID.postFX === false) && (
-          <EffectComposer
-            enableNormalPass={perf.normalPass && perf.n8ao}
-            multisampling={perf.multisampling}
-          >
-            {perf.n8ao && (
-              <N8AO
-                halfRes
-                quality="low"
-                aoRadius={postprocessing.aoRadius}
-                intensity={postprocessing.aoIntensity}
-                distanceFalloff={1}
-                depthAwareUpsampling
+          {postFxReady && perf.postFX && (
+            <EffectComposer
+              enableNormalPass={perf.normalPass && perf.n8ao}
+              multisampling={perf.multisampling}
+            >
+              {perf.n8ao && flags.ao && (
+                <N8AO
+                  halfRes
+                  quality={perf.n8aoQuality || 'medium'}
+                  aoRadius={CABINET_POST.aoRadius}
+                  intensity={CABINET_POST.aoIntensity * (isMobile ? CABINET_LOOK.ao.mobileScale : 1)}
+                  distanceFalloff={0.6}
+                  depthAwareUpsampling
+                />
+              )}
+              {perf.bloom && CABINET_POST.bloomIntensity > 0 && (
+                <Bloom
+                  intensity={CABINET_POST.bloomIntensity}
+                  luminanceThreshold={CABINET_POST.bloomThreshold}
+                  luminanceSmoothing={CABINET_POST.bloomSmoothing}
+                  mipmapBlur
+                />
+              )}
+              <Vignette
+                offset={CABINET_POST.vignetteOffset}
+                darkness={CABINET_POST.vignetteDarkness}
               />
-            )}
-            {perf.bloom && postprocessing.bloomIntensity > 0 && (
-              <Bloom
-                intensity={postprocessing.bloomIntensity}
-                luminanceThreshold={postprocessing.bloomThreshold}
-                luminanceSmoothing={postprocessing.bloomSmoothing ?? 0.2}
-                mipmapBlur
+              <BrightnessContrast
+                contrast={CABINET_POST.contrast}
+                brightness={CABINET_POST.brightness}
               />
-            )}
-            {perf.noise && postprocessing.noiseOpacity > 0 && (
-              <Noise opacity={postprocessing.noiseOpacity} />
-            )}
-            <Vignette
-              offset={postprocessing.vignetteOffset}
-              darkness={postprocessing.vignetteDarkness}
-            />
-            <BrightnessContrast contrast={postprocessing.contrast} brightness={postprocessing.brightness} />
-            <HueSaturation saturation={postprocessing.saturation} />
-          </EffectComposer>
-        )}
-      </Canvas>
+              <HueSaturation saturation={CABINET_POST.saturation} />
+            </EffectComposer>
+          )}
+        </Canvas>
       </WebGLErrorBoundary>
     </div>
   )

@@ -326,14 +326,14 @@ export const CABINET_LIGHTS = {
 }
 
 export const CABINET_POST = {
-  aoRadius: 0.42,
-  aoIntensity: 1.55,
+  aoRadius: CABINET_LOOK.ao.radius,
+  aoIntensity: CABINET_LOOK.ao.intensity,
   bloomIntensity: 0.18,
   bloomThreshold: 0.85,
   bloomSmoothing: 0.25,
   vignetteOffset: 0.22,
   vignetteDarkness: 0.58,
-  contrast: 0.06,
+  contrast: CABINET_LOOK.tone.contrast,
   brightness: 0,
   saturation: 0.04,
   noiseOpacity: 0,
