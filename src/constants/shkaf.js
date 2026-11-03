@@ -14,13 +14,16 @@ export const DRAWER_GAP = 0.05
 
 /** Анимации GSAP */
 export const DOOR_ROTATION_AXIS = 'y'
-/** 120° в радианах */
-export const DOOR_OPEN_ANGLE = (120 * Math.PI) / 180
+/**
+ * Угол открытия от closed (Y=0).
+ * Петли из Blender door_left/right (внешний край). Знаки как в классическом Russo.
+ */
+export const DOOR_OPEN_ANGLE = (140 * Math.PI) / 180
 export const DOOR_LEFT_OPEN_ANGLE = -DOOR_OPEN_ANGLE
 export const DOOR_RIGHT_OPEN_ANGLE = DOOR_OPEN_ANGLE
 export const DOOR_OPEN_DURATION = 0.8
 /** Выдвижение ящика к камере (~6 см в метрах сцены) */
-export const DRAWER_PULL_DISTANCE = 0.06
+export const DRAWER_PULL_DISTANCE = 0.12
 export const DRAWER_OPEN_DURATION = 0.55
 /** Пауза после выдвижения, чтобы жест успел прочитаться */
 export const NAVIGATE_DELAY_MS = 280

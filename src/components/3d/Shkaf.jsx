@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { useThree } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useNavigate } from 'react-router-dom'
 import gsap from 'gsap'
@@ -22,11 +22,20 @@ import {
 import { findDrawerFromIntersections } from '../../utils/drawerHit'
 import { applyHingeLegMaterial, hideCabinetHinges } from '../../utils/bronzeTextures'
 import { applyAgedCopperToCorpus, loadAgedCopperTextures } from '../../utils/agedCopperTextures'
-import { applyDrawerLeatherRims, loadLeatherTextures } from '../../utils/leatherTextures'
+import { applyAgedCopperToJewelry } from '../../utils/jewelryCoffeeMaterial'
+import { applyBookCovers, loadBookCoverTextures } from '../../utils/bookCovers'
+import { addDoorHandleShadows, applyDrawerLeatherRims, loadLeatherTextures } from '../../utils/leatherTextures'
 import DoorMirrors from './DoorMirrors'
 import { applyWalnutBake, finishCabinetWood, loadWalnutBake } from '../../utils/cabinetWoodFinish'
 import { applyCabinetLightmaps, loadCabinetLightmaps } from '../../utils/cabinetLightmaps'
 import { applyCabinetEnv } from '../../utils/cabinetEnv'
+import { loadDoorShadowBake, prepareDoorShadowTargets, syncDoorShadow } from '../../utils/doorShadowBake'
+import {
+  collectInteriorShadowTargets,
+  loadInteriorShadowBake,
+  syncInteriorShadow,
+} from '../../utils/interiorShadowBake'
+import { applyCabinetTune, useCabinetTune } from '../../utils/cabinetTune'
 import { CABINET_LOOK } from '../../constants/cabinetStudio'
 import { cabinetFlags } from '../../utils/cabinetQuery'
 import { russoLog } from '../../utils/russoLog'
@@ -53,7 +62,7 @@ function getPullDirection(node) {
 const _hingeWorld = new THREE.Vector3()
 const _parentInv = new THREE.Matrix4()
 
-/** Пивот door_* сидит впереди петли корпуса — при 120° створка уезжает. */
+/** Пивот door_* сидит впереди петли корпуса — при открытии створка уезжает. */
 function snapDoorPivotToHinge(door, hinge) {
   if (!door?.parent || !hinge) return
   door.parent.updateWorldMatrix(true, false)
@@ -72,8 +81,60 @@ function snapDoorPivotToHinge(door, hinge) {
   })
 }
 
+const DOOR_FACE_PAIRS = [
+  ['door_left_panel_authored', 'door_right_panel_authored'],
+  ['door_left_panel_authored_1', 'door_right_panel_authored_1'],
+]
+
+/** Правая лицевая панель в GLB на ~1.4 см впереди левой. Сдвигаем только её, не берёзу и не декор. */
+function alignRightDoorFace(model) {
+  const box = new THREE.Box3()
+  const world = new THREE.Vector3()
+  for (const [leftName, rightName] of DOOR_FACE_PAIRS) {
+    const left = model.getObjectByName(leftName)
+    const right = model.getObjectByName(rightName)
+    if (!left?.isMesh || !right?.isMesh || !right.parent) continue
+    left.updateWorldMatrix(true, true)
+    right.updateWorldMatrix(true, true)
+    const leftMax = box.setFromObject(left).max.z
+    right.updateWorldMatrix(true, true)
+    const rightMax = box.setFromObject(right).max.z
+    const dz = leftMax - rightMax
+    if (Math.abs(dz) < 1e-4) continue
+    right.getWorldPosition(world)
+    world.z += dz
+    right.parent.updateWorldMatrix(true, false)
+    right.parent.worldToLocal(world)
+    right.position.copy(world)
+  }
+}
+
 const NO_CAST_NAME = /glass|mirror|stitch|decanter|liquid|whisky|bottle|foil|_inner$/i
 const NO_CAST_MAT = /glass|mirror|decanter|liquid|whisky|transparent/i
+const LABEL_MAT = /label/i
+const PRINTED_BOTTLE_MAT = /^Material\.005$|^M_Glengoyne_Glass_PBR$/
+const INTERIOR_GLASS_MAT =
+  /^(M_Crystal_Glass|M_Glass_Tumbler|M_Wine_Glass|M_Bottle_Short_Glass|Glass Transparent Principled|glass-top|Glass|Decanter|Johnnie Walker Whiskey)$/i
+const STRAY_HIDE = /^(botella-glengoyne-aro)$/i
+
+function asPhysical(mat) {
+  if (!mat || mat.isMeshPhysicalMaterial) return mat
+  if (!mat.isMeshStandardMaterial) return mat
+  const phys = new THREE.MeshPhysicalMaterial()
+  THREE.MeshStandardMaterial.prototype.copy.call(phys, mat)
+  phys.name = mat.name
+  return phys
+}
+
+function hideCabinetStrays(root) {
+  let hidden = 0
+  root.traverse((obj) => {
+    if (!STRAY_HIDE.test(obj.name || '')) return
+    obj.visible = false
+    hidden += 1
+  })
+  return hidden
+}
 
 /** Стекло и тонкая прошивка в карту теней не идут — иначе дырки и acne. */
 function meshCastsShadow(mesh) {
@@ -102,17 +163,47 @@ function prepareMaterials(root) {
     else if (kind === 'stitch') stitch += 1
     if (kind) return
     const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
-    mats.forEach((mat) => {
-      if (!mat) return
-      if ('envMapIntensity' in mat) mat.envMapIntensity = 1
-      if ('transmission' in mat && mat.transmission > 0.01) {
-        mat.thickness = mat.thickness > 0 ? mat.thickness : 0.04
-        mat.ior = mat.ior || 1.45
-        mat.attenuationDistance = mat.attenuationDistance || 1
-        mat.transparent = true
+    const next = mats.map((mat) => {
+      if (!mat) return mat
+      let use = mat
+      if (INTERIOR_GLASS_MAT.test(mat.name || '')) {
+        use = asPhysical(mat)
+        const liquid = /whiskey/i.test(use.name || '')
+        use.transmission = liquid ? Math.max(use.transmission ?? 1, 0.95) : 0.92
+        use.thickness = liquid ? 0.08 : 0.04
+        use.ior = liquid ? 1.33 : 1.48
+        use.roughness = Math.min(use.roughness ?? 0.04, 0.06)
+        use.metalness = 0
+        use.transparent = true
+        use.envMapIntensity = 1
       }
-      mat.needsUpdate = true
+      if ('envMapIntensity' in use) use.envMapIntensity = Math.max(use.envMapIntensity ?? 0, 0.45)
+      // Этикетка в текстуре: внутри нет прямого света, а metalness 1 из GLB гасит
+      // диффуз целиком — надпись не видна.
+      if (LABEL_MAT.test(use.name || '') && use.map && 'emissive' in use) {
+        use.emissive.set('#ffffff')
+        use.emissiveMap = use.map
+        use.emissiveIntensity = 0.32
+        use.metalness = 0
+        use.roughness = Math.max(use.roughness ?? 0.5, 0.55)
+      } else if (PRINTED_BOTTLE_MAT.test(use.name || '') && use.map && 'emissive' in use) {
+        use.emissive.set('#ffffff')
+        use.emissiveMap = use.map
+        use.emissiveIntensity = 0.28
+        use.metalness = 0
+        use.roughness = Math.max(use.roughness ?? 0.2, 0.35)
+      }
+      if ('transmission' in use && use.transmission > 0.01) {
+        use = asPhysical(use)
+        use.thickness = use.thickness > 0 ? use.thickness : 0.04
+        use.ior = use.ior || 1.45
+        use.metalness = 0
+        use.transparent = true
+      }
+      use.needsUpdate = true
+      return use
     })
+    obj.material = Array.isArray(obj.material) ? next : next[0]
   })
   return { walnut, leather, stitch }
 }
@@ -138,6 +229,21 @@ export default function Shkaf() {
   const drawerTimelineRef = useRef(null)
   const navTimerRef = useRef(null)
   const hoveredDrawerId = useRef(null)
+  const doorShadowTargets = useRef(null)
+  const doorShadowTex = useRef(null)
+  const interiorTargets = useMemo(() => collectInteriorShadowTargets(model), [model])
+  const interiorTex = useRef(null)
+
+  const pushTune = useCallback(() => {
+    if (!cabinetFlags().tune) return
+    applyCabinetTune(model, scene)
+  }, [model, scene])
+
+  useEffect(() => {
+    if (!cabinetFlags().tune) return undefined
+    pushTune()
+    return useCabinetTune.subscribe(() => pushTune())
+  }, [pushTune])
 
   useLayoutEffect(() => {
     const wood = prepareMaterials(model)
@@ -158,6 +264,9 @@ export default function Shkaf() {
       snapDoorPivotToHinge(right, model.getObjectByName('hinge_right_2_body'))
       closedRotations.current.right = 0
     }
+    const doorShadow = prepareDoorShadowTargets(model)
+    doorShadowTargets.current = doorShadow.targets
+    russoLog('info', 'shkaf', 'door shadow uv', doorShadow.uvRange)
     if (cabinetFlags().compare) {
       const axis = DOOR_ROTATION_AXIS
       if (left) left.rotation[axis] = DOOR_LEFT_OPEN_ANGLE
@@ -165,6 +274,9 @@ export default function Shkaf() {
       setDoorsOpen(true)
     }
     hideCabinetHinges(model)
+    hideCabinetStrays(model)
+    alignRightDoorFace(model)
+    addDoorHandleShadows(model)
     russoLog('info', 'shkaf', 'new cabinet loaded', {
       root: !!model.getObjectByName(SHKAF_ROOT_NAME),
       door_left: left?.name ?? null,
@@ -172,42 +284,54 @@ export default function Shkaf() {
       drawer_1: !!model.getObjectByName('drawer_1'),
       drawer_2: !!model.getObjectByName('drawer_2'),
     })
-  }, [model])
+    pushTune()
+  }, [model, pushTune, setDoorsOpen])
 
   useEffect(() => {
     let cancelled = false
-    loadLeatherTextures()
+    let leatherTex = null
+    loadBookCoverTextures()
       .then((tex) => {
         if (cancelled) return
-        const rims = applyDrawerLeatherRims(model, tex)
-        russoLog('info', 'shkaf', 'drawer leather', { rims })
+        const books = applyBookCovers(model, tex)
+        applyCabinetEnv(model, scene.environment)
+        russoLog('info', 'shkaf', 'book covers', { books })
       })
       .catch((err) => {
-        russoLog('warn', 'shkaf', 'drawer leather failed', { err: String(err) })
+        russoLog('warn', 'shkaf', 'book covers failed', { err: String(err) })
       })
-      .then(() => {
+    loadLeatherTextures()
+      .then((tex) => {
         if (cancelled) return null
+        leatherTex = tex
         return loadCabinetLightmaps(gl).then(() => applyCabinetLightmaps(model, gl))
       })
       .then((lightmaps) => {
         if (cancelled || !lightmaps) return
+        // Кожа после lightmaps: иначе bake с ободка мог остаться / перезаписать материал.
+        if (leatherTex) {
+          const rims = applyDrawerLeatherRims(model, leatherTex)
+          russoLog('info', 'shkaf', 'drawer leather', { rims })
+        }
         scene.environmentIntensity = CABINET_LOOK.environmentIntensity
         const env = applyCabinetEnv(model, scene.environment)
+        pushTune()
         russoLog('info', 'shkaf', 'lightmaps', { ...lightmaps, env })
       })
       .catch((err) => {
-        russoLog('warn', 'shkaf', 'lightmaps failed', { err: String(err) })
+        russoLog('warn', 'shkaf', 'leather/lightmaps failed', { err: String(err) })
       })
     return () => {
       cancelled = true
     }
-  }, [gl, model, scene])
+  }, [gl, model, scene, pushTune])
 
   useLayoutEffect(() => {
     scene.environmentIntensity = CABINET_LOOK.environmentIntensity
     if (!environment) return
     applyCabinetEnv(model, environment)
-  }, [environment, model, scene])
+    pushTune()
+  }, [environment, model, scene, pushTune])
 
   useEffect(() => {
     let cancelled = false
@@ -216,6 +340,7 @@ export default function Shkaf() {
         if (cancelled || !textures) return
         const walnut = applyWalnutBake(model, textures)
         applyCabinetEnv(model, scene.environment)
+        pushTune()
         russoLog('info', 'shkaf', 'walnut bake', { walnut })
       })
       .catch((err) => {
@@ -224,7 +349,38 @@ export default function Shkaf() {
     return () => {
       cancelled = true
     }
-  }, [model, scene])
+  }, [model, scene, pushTune])
+
+  useEffect(() => {
+    let cancelled = false
+    loadDoorShadowBake()
+      .then((tex) => {
+        if (!cancelled) doorShadowTex.current = tex
+      })
+      .catch((err) => {
+        russoLog('warn', 'shkaf', 'door shadow bake load failed', { err: String(err) })
+      })
+    loadInteriorShadowBake().then((textures) => {
+      if (cancelled) return
+      interiorTex.current = textures
+      russoLog('info', 'shkaf', 'interior shadow', { maps: [...textures.keys()] })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useFrame(() => {
+    syncInteriorShadow(interiorTargets, interiorTex.current)
+    if (!doorShadowTargets.current) return
+    syncDoorShadow(
+      doorShadowTargets.current,
+      doorShadowTex.current,
+      { left: leftDoorRef.current, right: rightDoorRef.current },
+      { left: DOOR_LEFT_OPEN_ANGLE, right: DOOR_RIGHT_OPEN_ANGLE },
+      DOOR_ROTATION_AXIS,
+    )
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -243,8 +399,11 @@ export default function Shkaf() {
   useLayoutEffect(() => {
     if (!agedCopper) return
     const corpus = applyAgedCopperToCorpus(model, agedCopper)
-    russoLog('info', 'shkaf', 'corpus aged copper', { corpus })
-  }, [agedCopper, model])
+    const jewelry = applyAgedCopperToJewelry(model)
+    applyCabinetEnv(model, scene.environment)
+    pushTune()
+    russoLog('info', 'shkaf', 'corpus aged copper', { corpus, jewelry })
+  }, [agedCopper, model, scene, pushTune])
 
   const animateDoors = useCallback(
     (open) => {
@@ -256,12 +415,12 @@ export default function Shkaf() {
         return
       }
       setAnimating(true)
+      setDoorsOpen(open)
       doorTimelineRef.current?.kill()
       const axis = DOOR_ROTATION_AXIS
       const tl = gsap.timeline({
         onComplete: () => {
           doorTimelineRef.current = null
-          setDoorsOpen(open)
           setAnimating(false)
         },
       })

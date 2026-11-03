@@ -4,6 +4,7 @@ import { PerspectiveCamera, OrbitControls, Environment, useProgress } from '@rea
 import { EffectComposer, Vignette, BrightnessContrast, HueSaturation, N8AO, Bloom, ToneMapping } from '@react-three/postprocessing'
 import { ToneMappingMode } from 'postprocessing'
 import * as THREE from 'three'
+import gsap from 'gsap'
 import Shkaf from './Shkaf'
 import Loader from './Loader'
 import CabinetLights from './CabinetLights'
@@ -16,11 +17,17 @@ import {
   CABINET_EXPOSURE,
   CABINET_LOOK,
   CABINET_POST,
+  cameraDistance,
   getCabinetCamera,
+  getCabinetCameraOpen,
   getCabinetOrbit,
 } from '../../constants/cabinetStudio'
+import { DOOR_OPEN_DURATION } from '../../constants/shkaf'
 import { cabinetFlags } from '../../utils/cabinetQuery'
 import { Exposure } from './ExposureEffect'
+import CabinetTune from './CabinetTune'
+import { useCabinetTune } from '../../utils/cabinetTune'
+import { useShkafStore } from '../../store/shkafStore'
 
 const TONE_MODE = {
   agx: ToneMappingMode.AGX,
@@ -158,6 +165,74 @@ function CompareCamera() {
   return null
 }
 
+function DoorFrontCamera({ closed, open, duration }) {
+  const camera = useThree((s) => s.camera)
+  const controls = useThree((s) => s.controls)
+  const doorsOpen = useShkafStore((s) => s.doorsOpen)
+  const skip = useRef(true)
+
+  useEffect(() => {
+    if (!controls) return undefined
+    if (skip.current) {
+      skip.current = false
+      return undefined
+    }
+    const pose = doorsOpen ? open : closed
+    const dist = cameraDistance(pose)
+    controls.maxDistance = Math.max(controls.minDistance, dist)
+    controls.enabled = false
+    const tween = { pos: camera.position, tgt: controls.target }
+    gsap.killTweensOf([tween.pos, tween.tgt])
+    const ease = 'power2.out'
+    gsap.to(tween.pos, {
+      x: pose.position[0],
+      y: pose.position[1],
+      z: pose.position[2],
+      duration,
+      ease,
+      onUpdate: () => controls.update(),
+    })
+    gsap.to(tween.tgt, {
+      x: pose.target[0],
+      y: pose.target[1],
+      z: pose.target[2],
+      duration,
+      ease,
+      onComplete: () => {
+        controls.enabled = true
+        controls.update()
+      },
+    })
+    return () => {
+      gsap.killTweensOf([camera.position, controls.target])
+      controls.enabled = true
+    }
+  }, [camera, closed, controls, doorsOpen, duration, open])
+
+  return null
+}
+
+function ClampOrbitPan({ minY, maxY }) {
+  const camera = useThree((s) => s.camera)
+  const controls = useThree((s) => s.controls)
+
+  useEffect(() => {
+    if (!controls) return undefined
+    const clamp = () => {
+      let dy = 0
+      if (camera.position.y < minY) dy = minY - camera.position.y
+      else if (camera.position.y > maxY) dy = maxY - camera.position.y
+      if (!dy) return
+      camera.position.y += dy
+      controls.target.y += dy
+    }
+    controls.addEventListener('change', clamp)
+    return () => controls.removeEventListener('change', clamp)
+  }, [camera, controls, minY, maxY])
+
+  return null
+}
+
 function StudioCameraSync({ position, target }) {
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls)
@@ -186,8 +261,18 @@ export default function Scene() {
   const isMobile = useIsMobile()
   const perf = useStudioPerformance()
   const flags = cabinetFlags()
+  const tune = useCabinetTune()
+  const exposure = flags.tune ? tune.exposure : CABINET_LOOK.tone.exposure
+  const environmentIntensity = flags.tune ? tune.environmentIntensity : CABINET_ENV.intensity
+  const aoOn = flags.tune ? tune.ao : flags.ao
+  const aoIntensity = flags.tune ? tune.aoIntensity : CABINET_POST.aoIntensity
+  const bloomIntensity = flags.tune ? tune.bloomIntensity : CABINET_POST.bloomIntensity
+  const bloomThreshold = flags.tune ? tune.bloomThreshold : CABINET_POST.bloomThreshold
   const camera = getCabinetCamera(isMobile)
+  const cameraOpen = getCabinetCameraOpen(isMobile)
   const orbit = getCabinetOrbit(isMobile)
+  const doorsOpen = useShkafStore((s) => s.doorsOpen)
+  const orbitMaxDistance = doorsOpen ? cameraDistance(cameraOpen) : orbit.maxDistance
   const [webglLost, setWebglLost] = useState(false)
   const [postFxReady, setPostFxReady] = useState(false)
 
@@ -231,6 +316,7 @@ export default function Scene() {
       style={{ background: CABINET_BACKGROUND, width: '100vw', height: '100dvh', minHeight: '100vh' }}
     >
       <CanvasLoader />
+      {flags.tune ? <CabinetTune /> : null}
 
       <WebGLErrorBoundary fallback={<WebGLFallback />}>
         <Canvas
@@ -278,17 +364,25 @@ export default function Scene() {
             minPolarAngle={orbit.minPolar}
             maxPolarAngle={orbit.maxPolar}
             minDistance={orbit.minDistance}
-            maxDistance={orbit.maxDistance}
+            maxDistance={orbitMaxDistance}
             touches={
               isMobile
                 ? { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
                 : undefined
             }
           />
+          <ClampOrbitPan minY={orbit.panMinY} maxY={orbit.panMaxY} />
           {flags.compare ? (
             <CompareCamera />
           ) : (
-            <StudioCameraSync position={camera.position} target={camera.target} />
+            <>
+              <StudioCameraSync position={camera.position} target={camera.target} />
+              <DoorFrontCamera
+                closed={camera}
+                open={cameraOpen}
+                duration={DOOR_OPEN_DURATION}
+              />
+            </>
           )}
 
           <CabinetLights shadowMapSize={perf.shadowMapSize} />
@@ -296,7 +390,7 @@ export default function Scene() {
           <Suspense fallback={null}>
             <Environment
               files={CABINET_ENV.url}
-              environmentIntensity={CABINET_ENV.intensity}
+              environmentIntensity={environmentIntensity}
               background={false}
             />
             <StudioSceneMesh />
@@ -308,25 +402,25 @@ export default function Scene() {
               enableNormalPass={perf.normalPass && perf.n8ao}
               multisampling={perf.multisampling}
             >
-              {perf.n8ao && flags.ao && (
+              {perf.n8ao && aoOn && (
                 <N8AO
                   halfRes
                   quality={perf.n8aoQuality || 'medium'}
                   aoRadius={CABINET_POST.aoRadius}
-                  intensity={CABINET_POST.aoIntensity * (isMobile ? CABINET_LOOK.ao.mobileScale : 1)}
+                  intensity={aoIntensity * (isMobile ? CABINET_LOOK.ao.mobileScale : 1)}
                   distanceFalloff={0.6}
                   depthAwareUpsampling
                 />
               )}
-              {perf.bloom && CABINET_POST.bloomIntensity > 0 && (
+              {perf.bloom && bloomIntensity > 0 && (
                 <Bloom
-                  intensity={CABINET_POST.bloomIntensity}
-                  luminanceThreshold={CABINET_POST.bloomThreshold}
+                  intensity={bloomIntensity}
+                  luminanceThreshold={bloomThreshold}
                   luminanceSmoothing={CABINET_POST.bloomSmoothing}
                   mipmapBlur
                 />
               )}
-              <Exposure exposure={CABINET_LOOK.tone.exposure} />
+              <Exposure exposure={exposure} />
               <ToneMapping mode={TONE_MODE[flags.tone] ?? ToneMappingMode.AGX} />
               <BrightnessContrast
                 contrast={CABINET_POST.contrast}

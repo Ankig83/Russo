@@ -27,30 +27,89 @@ export const CABINET_CAMERA = {
   },
 }
 
+/**
+ * Лимит ЛКМ = азимут первого кадра (чуть справа). Влево — тот же угол.
+ * Верх/низ — тот же span вокруг стартового polar, не ±66° как раньше.
+ * Зум: maxDistance = дистанция первого кадра (дальше не отъехать).
+ */
+function cameraOffset(cam) {
+  const dx = cam.position[0] - cam.target[0]
+  const dy = cam.position[1] - cam.target[1]
+  const dz = cam.position[2] - cam.target[2]
+  const dist = Math.hypot(dx, dy, dz)
+  const polar = Math.acos(Math.min(1, Math.max(-1, dy / dist)))
+  return { dist, polar, target: cam.target }
+}
+
+/** Фронт: x=0, тот же polar, дистанция с запасом на открытые дверцы. */
+function frontCameraFrom(cam, distanceScale) {
+  const { dist: closedDist, polar, target } = cameraOffset(cam)
+  const dist = closedDist * distanceScale
+  const [tx, ty, tz] = target
+  return {
+    position: [tx, ty + dist * Math.cos(polar), tz + dist * Math.sin(polar)],
+    target: [tx, ty, tz],
+    fov: cam.fov,
+    near: cam.near,
+    far: cam.far,
+  }
+}
+
+export const CABINET_CAMERA_OPEN = {
+  desktop: frontCameraFrom(CABINET_CAMERA.desktop, 1.08),
+  mobile: frontCameraFrom(CABINET_CAMERA.mobile, 1.52),
+}
+
+export function cameraDistance(cam) {
+  return Math.hypot(
+    cam.position[0] - cam.target[0],
+    cam.position[1] - cam.target[1],
+    cam.position[2] - cam.target[2],
+  )
+}
+
+function orbitLimitsFromCamera(cam) {
+  const dx = cam.position[0] - cam.target[0]
+  const dy = cam.position[1] - cam.target[1]
+  const dz = cam.position[2] - cam.target[2]
+  const dist = Math.hypot(dx, dy, dz)
+  const span = Math.abs(Math.atan2(dx, dz))
+  const polar = Math.acos(Math.min(1, Math.max(-1, dy / dist)))
+  return {
+    minAzimuth: -span,
+    maxAzimuth: span,
+    minPolar: polar - span,
+    maxPolar: polar + span,
+    maxDistance: dist,
+  }
+}
+
+/** ПКМ-пан: глаз камеры не ниже пола и не сильно выше корпуса (~2.1 м). */
+export const CABINET_PAN = {
+  minY: 0.12,
+  maxY: 2.38,
+}
+
 export const CABINET_ORBIT = {
   desktop: {
-    minAzimuth: -1.15,
-    maxAzimuth: 1.15,
-    minPolar: 0.35,
-    maxPolar: Math.PI / 2 - 0.08,
+    ...orbitLimitsFromCamera(CABINET_CAMERA.desktop),
     minDistance: 3.6,
-    maxDistance: 10,
     enablePan: true,
     rotateSpeed: 0.85,
     zoomSpeed: 0.9,
     panSpeed: 0.8,
+    panMinY: CABINET_PAN.minY,
+    panMaxY: CABINET_PAN.maxY,
   },
   mobile: {
-    minAzimuth: -1.2,
-    maxAzimuth: 1.2,
-    minPolar: 0.4,
-    maxPolar: Math.PI / 2 - 0.1,
+    ...orbitLimitsFromCamera(CABINET_CAMERA.mobile),
     minDistance: 5,
-    maxDistance: 12,
     enablePan: true,
     rotateSpeed: 0.7,
     zoomSpeed: 0.85,
     panSpeed: 0.7,
+    panMinY: CABINET_PAN.minY,
+    panMaxY: CABINET_PAN.maxY,
   },
 }
 
@@ -82,8 +141,25 @@ export const CABINET_LOOK = {
   environmentIntensity: 1,
   envMapIntensity: {
     metal: 1,
+    // Шкатулка / латунная ваза: 1 даёт белый хром студии.
+    metal_inside: 0.28,
+    // Стекло внутри шкафа.
+    glass_prop: 0.45,
     lit: 0.08,
     rest: 0.3,
+    // Ножки. 1 даёт хромовый блик студии.
+    base: 0.22,
+    // Плоский диск. У ножек блик с ребра, диску нужен полный env.
+    medallion: 1,
+    door_panel: 0.62,
+    // Кожа ящиков: выше 0.25 обод сереет, 0 — чёрная рамка.
+    leather: 0.18,
+    // Шкатулка: родные UV pewter. 0.3 мало (чёрный силуэт), >0.8 — хром студии.
+    jewelry: 0.55,
+  },
+  roughnessAdd: {
+    // У ножек roughness уже 1, прибавка упирается в потолок. Ползунок остаётся.
+    base: 0,
   },
   lightmap: {
     intensity: Math.PI,
@@ -95,18 +171,61 @@ export const CABINET_LOOK = {
    * corpus_main и back_wall в рантайме — Group: карта идёт на дочерние Mesh.
    */
   lightmaps: {
-    door_left_wood: { file: 'door_left_wood.hdr', channel: 2 },
-    door_right_wood: { file: 'door_right_wood.hdr', channel: 2 },
-    drawer_1: { file: 'drawer_1.hdr', channel: 2 },
-    drawer_2: { file: 'drawer_2.hdr', channel: 2 },
-    corpus_main: { file: 'corpus_main.hdr', channel: 2, skipMaterial: 'agedcopper|coffee' },
-    back_wall: { file: 'back_wall.hdr', channel: 1 },
-    modul_drawer: { file: 'modul_drawer.hdr', channel: 1 },
-    modul_drawer_back: { file: 'modul_drawer_back.hdr', channel: 1 },
-    drawer_leather_rim_top: { file: 'drawer_leather_rim_top.hdr', channel: 1 },
-    drawer_leather_rim_bot: { file: 'drawer_leather_rim_bot.hdr', channel: 1 },
+    // Дверки и ящики без bake — иначе левая/правая расходятся тоном.
+    // Внутри приглушено и теплее: corpus/back_wall ниже π.
+    corpus_main: {
+      file: 'corpus_main.hdr',
+      channel: 2,
+      skipMaterial: 'agedcopper|coffee',
+      intensity: Math.PI * 0.8,
+      // Левая стенка между модулем и стеклом в bake ≈ 0: intensity её не поднимает.
+      fill: { color: '#ffd2a8', intensity: 0.35 },
+    },
+    // back_wall bake снят — внутри ровнее, без пятна на заднике.
   },
-  awaitingBake: 'door_(left|right)_detail_',
+  /**
+   * Cycles Diffuse (direct+indirect) фасада в закрытой позе → aoMap панелей и круга.
+   * UV считается в рантайме планарно: x/y модели при закрытых дверях.
+   * bounds — те же, что в Blender (world X / Z), иначе карта съедет.
+   */
+  doorShadow: {
+    file: 'textures/cycles-bake/doors/doors_closed_shadow.png',
+    bounds: { x0: -0.585877, x1: 0.560494, y0: 0.480469, y1: 2.286268 },
+    channel: 3,
+    intensity: 1,
+  },
+  /**
+   * Cycles Diffuse интерьера при открытых на 140° дверях → aoMap по UV «Lightmap».
+   * Канал = индекс UV «Lightmap» в Blender (так же уходит в GLB).
+   * Нормировка своя у каждого объекта: тон даёт материал, карта — только тени.
+   */
+  interiorShadow: {
+    dir: 'textures/cycles-bake/interior/',
+    // < 1 — пол тени: в карте есть пиксели ~0, при 1 они уходят в чёрное.
+    intensity: 0.8,
+    // aoMap умножает и lightMap: на корпусе с bake будет двойная тень.
+    overLightMap: false,
+    channels: {
+      back_wall: 1,
+      corpus_main: 2,
+      modul_drawer: 1,
+      modul_drawer_back: 1,
+      drawer_1: 2,
+      drawer_2: 2,
+      drawer_leather_rim_top: 1,
+      drawer_leather_rim_bot: 1,
+      door_left_wood: 2,
+      door_right_wood: 2,
+      door_left_detail_a: 2,
+      door_left_detail_b: 2,
+      door_left_detail_c: 2,
+      door_right_detail_a: 2,
+      door_right_detail_b: 2,
+      door_right_detail_c: 2,
+    },
+    skipMaterial: /agedcopper|coffee/i,
+  },
+  awaitingBake: '',
   realtime: false,
   ao: {
     radius: 0.2,
@@ -217,14 +336,17 @@ export const CABINET_MIRROR = {
   names: ['door_left_inner', 'door_right_inner'],
   desktopResolution: 1024,
   mobileResolution: 512,
-  mirror: 1,
-  mixStrength: 1,
-  mixBlur: 0,
-  roughness: 0.04,
+  // Светлое зеркало, не медная амальгама. Glow холодный, иначе дверь «из меди».
+  mirror: 0.88,
+  mixStrength: 0.55,
+  mixBlur: 0.22,
+  blur: [180, 80],
+  roughness: 0.08,
   metalness: 1,
-  color: '#ffffff',
-  envMapIntensity: 0.15,
+  color: '#dfe6ec',
+  envMapIntensity: 0.7,
   reflectorOffset: 0.002,
+  glow: { color: '#c5d0da', intensity: 0.5 },
 
   pose: {
     door_left_inner: {
@@ -278,8 +400,8 @@ export const CABINET_LIGHTS = {
     aim: [0, 1.35, 0.04],
     width: 0.46,
     height: 0.12,
-    intensity: 32 * AREA_ENERGY_SCALE,
-    color: '#f7f5f0',
+    intensity: 18 * AREA_ENERGY_SCALE,
+    color: '#ffd8b0',
   },
   backdropSpot: {
     position: [0, 2.5, 0.2],
@@ -303,8 +425,8 @@ export const CABINET_LIGHTS = {
   interiorSpot: {
     position: [0.02, 1.78, 0.02],
     aim: [0.05, 1.05, 0.42],
-    intensity: 10,
-    color: '#ffd7ae',
+    intensity: 5.5,
+    color: '#ffc89a',
     angle: 0.92,
     penumbra: 0.62,
     distance: 2.35,
@@ -338,6 +460,58 @@ export const CABINET_POST = {
   brightness: 0,
   saturation: 0.04,
   noiseOpacity: 0,
+}
+
+/**
+ * Старт панели ?tune=1. Числа совпадают с текущим кадром.
+ * Подобранный JSON из «Copy config» сюда и пишется.
+ *
+ * environmentIntensity в three не влияет на материал, у которого envMap уже задан
+ * (WebGLRenderer: подмена только при envMap === null). Панель умножает его
+ * на envMapIntensity группы.
+ */
+export const CABINET_TUNE = {
+  exposure: CABINET_LOOK.tone.exposure,
+  environmentIntensity: CABINET_LOOK.environmentIntensity,
+  envMapIntensity: {
+    metal_inside: CABINET_LOOK.envMapIntensity.metal_inside,
+    glass_prop: CABINET_LOOK.envMapIntensity.glass_prop,
+    copper_corpus: CORPUS_AGED_COPPER.env,
+    base: CABINET_LOOK.envMapIntensity.base,
+    medallion: CABINET_LOOK.envMapIntensity.medallion,
+    wood_lit: CABINET_LOOK.envMapIntensity.lit,
+    leather_lit: CABINET_LOOK.envMapIntensity.leather,
+    jewelry: CABINET_LOOK.envMapIntensity.jewelry,
+  },
+  lightMapIntensity: {
+    wood: CABINET_LOOK.lightmap.intensity,
+    leather: CABINET_LOOK.lightmap.intensity,
+    back_wall: 0,
+    corpus: CABINET_LOOK.lightmaps.corpus_main.intensity,
+    details: CABINET_LOOK.lightmap.intensity,
+  },
+  roughnessAdd: {
+    copper_corpus: 0,
+    base: CABINET_LOOK.roughnessAdd.base,
+  },
+  lightmaps: true,
+  realtime: CABINET_LOOK.realtime,
+  ao: true,
+  aoIntensity: CABINET_POST.aoIntensity,
+  bloomIntensity: CABINET_POST.bloomIntensity,
+  bloomThreshold: CABINET_POST.bloomThreshold,
+  lamps: {
+    ambient: CABINET_LIGHTS.ambient,
+    key: CABINET_LIGHTS.key.intensity,
+    fill: CABINET_LIGHTS.fill.intensity,
+    rimLeft: CABINET_LIGHTS.rimLeft.intensity,
+    rimRight: CABINET_LIGHTS.rimRight.intensity,
+    interior: CABINET_LIGHTS.interior.intensity,
+    interiorSpot: CABINET_LIGHTS.interiorSpot.intensity,
+    shadow: CABINET_LIGHTS.shadow.intensity,
+    backdropSpot: CABINET_LIGHTS.backdropSpot.intensity,
+    floorPool: CABINET_LIGHTS.floorPool.intensity,
+  },
 }
 
 export const STUDIO_PERFORMANCE = {
@@ -391,6 +565,10 @@ export const STUDIO_PERFORMANCE = {
 
 export function getCabinetCamera(isMobile) {
   return isMobile ? CABINET_CAMERA.mobile : CABINET_CAMERA.desktop
+}
+
+export function getCabinetCameraOpen(isMobile) {
+  return isMobile ? CABINET_CAMERA_OPEN.mobile : CABINET_CAMERA_OPEN.desktop
 }
 
 export function getCabinetOrbit(isMobile) {
