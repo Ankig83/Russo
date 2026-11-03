@@ -117,6 +117,15 @@ const INTERIOR_GLASS_MAT =
   /^(M_Crystal_Glass|M_Glass_Tumbler|M_Wine_Glass|M_Bottle_Short_Glass|Glass Transparent Principled|glass-top|Glass|Decanter|Johnnie Walker Whiskey)$/i
 const STRAY_HIDE = /^(botella-glengoyne-aro)$/i
 
+function isUnderDoorRight(obj) {
+  let node = obj
+  while (node) {
+    if (node.name === 'door_right') return true
+    node = node.parent
+  }
+  return false
+}
+
 function asPhysical(mat) {
   if (!mat || mat.isMeshPhysicalMaterial) return mat
   if (!mat.isMeshStandardMaterial) return mat
@@ -156,7 +165,7 @@ function prepareMaterials(root) {
     if (!obj.isMesh) return
     const casts = meshCastsShadow(obj)
     obj.castShadow = casts
-    obj.receiveShadow = casts || !/glass|mirror|_inner$/i.test(obj.name || '')
+    obj.receiveShadow = casts || !/glass|mirror|_inner$|bottle|wine|crystal|tumbler|decanter|^cup$/i.test(obj.name || '')
     const kind = finishCabinetWood(obj)
     if (kind === 'walnut') walnut += 1
     else if (kind === 'leather') leather += 1
@@ -166,44 +175,90 @@ function prepareMaterials(root) {
     const next = mats.map((mat) => {
       if (!mat) return mat
       let use = mat
-      if (INTERIOR_GLASS_MAT.test(mat.name || '')) {
+      const onRightDoor = isUnderDoorRight(obj)
+      if (INTERIOR_GLASS_MAT.test(mat.name || '') && !onRightDoor) {
         use = asPhysical(mat)
         const liquid = /whiskey/i.test(use.name || '')
-        use.transmission = liquid ? Math.max(use.transmission ?? 1, 0.95) : 0.92
-        use.thickness = liquid ? 0.08 : 0.04
-        use.ior = liquid ? 1.33 : 1.48
-        use.roughness = Math.min(use.roughness ?? 0.04, 0.06)
+        const shortBottle = /bottle_short/i.test(use.name || '')
+        use.transmission = liquid || shortBottle ? Math.max(use.transmission ?? 1, 0.85) : 1
+        use.thickness = liquid ? 0.08 : 0.02
+        use.ior = liquid ? 1.33 : 1.5
+        use.roughness = Math.min(use.roughness ?? 0.02, 0.03)
         use.metalness = 0
         use.transparent = true
+        use.opacity = 1
+        if (!liquid && !shortBottle) use.color.set('#ffffff')
+        if ('attenuationColor' in use) use.attenuationColor.set('#ffffff')
+        if ('attenuationDistance' in use) use.attenuationDistance = Infinity
         use.envMapIntensity = 1
       }
-      if ('envMapIntensity' in use) use.envMapIntensity = Math.max(use.envMapIntensity ?? 0, 0.45)
+      if (onRightDoor && INTERIOR_GLASS_MAT.test(mat.name || '')) {
+        // Blender: белый trans + EEVEE = чёрное стекло. Не осветлять в clear glass.
+        use = asPhysical(mat)
+        use.transmission = 0
+        use.transparent = false
+        use.opacity = 1
+        use.metalness = 0
+        use.roughness = 0.06
+        use.color.set('#101010')
+        use.emissive.set('#000000')
+        use.emissiveIntensity = 0
+        use.envMapIntensity = 0.5
+      } else if ('envMapIntensity' in use) {
+        use.envMapIntensity = Math.max(use.envMapIntensity ?? 0, 0.45)
+      }
       // Этикетка в текстуре: внутри нет прямого света, а metalness 1 из GLB гасит
       // диффуз целиком — надпись не видна.
       if (LABEL_MAT.test(use.name || '') && use.map && 'emissive' in use) {
         use.emissive.set('#ffffff')
         use.emissiveMap = use.map
-        use.emissiveIntensity = 0.32
+        use.emissiveIntensity = onRightDoor ? 0.08 : 0.32
         use.metalness = 0
         use.roughness = Math.max(use.roughness ?? 0.5, 0.55)
-      } else if (PRINTED_BOTTLE_MAT.test(use.name || '') && use.map && 'emissive' in use) {
+      } else if (!onRightDoor && PRINTED_BOTTLE_MAT.test(use.name || '') && use.map && 'emissive' in use) {
         use.emissive.set('#ffffff')
         use.emissiveMap = use.map
         use.emissiveIntensity = 0.28
         use.metalness = 0
         use.roughness = Math.max(use.roughness ?? 0.2, 0.35)
       }
-      if ('transmission' in use && use.transmission > 0.01) {
+      if (onRightDoor && PRINTED_BOTTLE_MAT.test(use.name || '')) {
+        // Material.005 — чёрный парфюм с золотой этикеткой. Glengoyne bake светлый — гасим в чёрное стекло.
+        use.emissive.set('#000000')
+        use.emissiveIntensity = 0
+        use.transparent = false
+        use.transmission = 0
+        if (/glengoyne/i.test(use.name || '')) {
+          use.color.set('#141414')
+          use.metalnessMap = null
+          use.metalness = 0
+          use.roughness = 0.08
+        } else if (use.map) {
+          use.color.set('#ffffff')
+        }
+      }
+      if (!onRightDoor && 'transmission' in use && use.transmission > 0.01) {
         use = asPhysical(use)
-        use.thickness = use.thickness > 0 ? use.thickness : 0.04
-        use.ior = use.ior || 1.45
+        use.thickness = use.thickness > 0 ? use.thickness : 0.02
+        use.ior = use.ior || 1.5
         use.metalness = 0
         use.transparent = true
+        use.opacity = 1
+        if ('attenuationDistance' in use && !(use.attenuationDistance > 0)) {
+          use.attenuationDistance = Infinity
+        }
       }
       use.needsUpdate = true
       return use
     })
     obj.material = Array.isArray(obj.material) ? next : next[0]
+    const transmissive = (Array.isArray(obj.material) ? obj.material : [obj.material]).some(
+      (m) => (m?.transmission ?? 0) > 0.01,
+    )
+    if (transmissive) {
+      obj.castShadow = false
+      obj.receiveShadow = false
+    }
   })
   return { walnut, leather, stitch }
 }
