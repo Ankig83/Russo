@@ -229,7 +229,7 @@ export const CABINET_LOOK = {
       door_left_detail_a: 2,
       door_left_detail_b: 2,
       door_left_detail_c: 2,
-      door_right_detail_a: 2,
+      // bake Cycles снял силуэты бутылок на полке — aoMap даёт тёмное пятно у Glengoyne.
       door_right_detail_b: 2,
       door_right_detail_c: 2,
     },

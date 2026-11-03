@@ -61,6 +61,22 @@ function getPullDirection(node) {
 
 const _hingeWorld = new THREE.Vector3()
 const _parentInv = new THREE.Matrix4()
+const _fitP = new THREE.Vector3()
+const _fitWorld = new THREE.Vector3()
+
+function forEachWorldVertex(obj, fn) {
+  obj.updateWorldMatrix(true, true)
+  obj.traverse((mesh) => {
+    if (!mesh.isMesh) return
+    const pos = mesh.geometry?.getAttribute('position')
+    if (!pos) return
+    for (let i = 0; i < pos.count; i += 1) {
+      _fitP.fromBufferAttribute(pos, i)
+      mesh.localToWorld(_fitP)
+      fn(_fitP)
+    }
+  })
+}
 
 /** Пивот door_* сидит впереди петли корпуса — при открытии створка уезжает. */
 function snapDoorPivotToHinge(door, hinge) {
@@ -116,6 +132,46 @@ const PRINTED_BOTTLE_MAT = /^Material\.005$|^M_Glengoyne_Glass_PBR$/
 const INTERIOR_GLASS_MAT =
   /^(M_Crystal_Glass|M_Glass_Tumbler|M_Wine_Glass|M_Bottle_Short_Glass|Glass Transparent Principled|glass-top|Glass|Decanter|Johnnie Walker Whiskey)$/i
 const STRAY_HIDE = /^(botella-glengoyne-aro)$/i
+const RIGHT_TOP_BOTTLE = 'tapa-gleygoyne'
+const RIGHT_TOP_BOTTLE_SCALE = 0.9
+const RIGHT_TOP_SHELF = 'door_right_detail_a'
+
+/** 0.9 scale, затем центр AABB бутылки в глубину ниши (вершины, не bound_box). */
+function fitRightTopBottle(root) {
+  const bottle = root.getObjectByName(RIGHT_TOP_BOTTLE)
+  const shelf = root.getObjectByName(RIGHT_TOP_SHELF)
+  if (!bottle?.parent || !shelf) return
+  bottle.scale.multiplyScalar(RIGHT_TOP_BOTTLE_SCALE)
+
+  let cavZ0 = Infinity
+  let cavZ1 = -Infinity
+  forEachWorldVertex(shelf, (v) => {
+    if (v.z < cavZ0) cavZ0 = v.z
+    if (v.z > cavZ1) cavZ1 = v.z
+  })
+  let bz0 = Infinity
+  let bz1 = -Infinity
+  let bx0 = Infinity
+  let bx1 = -Infinity
+  forEachWorldVertex(bottle, (v) => {
+    if (v.z < bz0) bz0 = v.z
+    if (v.z > bz1) bz1 = v.z
+    if (v.x < bx0) bx0 = v.x
+    if (v.x > bx1) bx1 = v.x
+  })
+  const dz = 0.5 * (cavZ0 + cavZ1) - 0.5 * (bz0 + bz1)
+  bottle.getWorldPosition(_fitWorld)
+  _fitWorld.z += dz
+  bottle.parent.updateWorldMatrix(true, false)
+  bottle.parent.worldToLocal(_fitWorld)
+  bottle.position.copy(_fitWorld)
+  russoLog('info', 'shkaf', 'right top bottle fit', {
+    dz,
+    cavityZ: [+cavZ0.toFixed(4), +cavZ1.toFixed(4)],
+    bottleZ: [+bz0.toFixed(4), +bz1.toFixed(4)],
+    bottleX: [+bx0.toFixed(4), +bx1.toFixed(4)],
+  })
+}
 
 function isUnderDoorRight(obj) {
   let node = obj
@@ -330,6 +386,7 @@ export default function Shkaf() {
     }
     hideCabinetHinges(model)
     hideCabinetStrays(model)
+    fitRightTopBottle(model)
     alignRightDoorFace(model)
     addDoorHandleShadows(model)
     russoLog('info', 'shkaf', 'new cabinet loaded', {
