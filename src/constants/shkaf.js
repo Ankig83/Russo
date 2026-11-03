@@ -18,10 +18,12 @@ export const DOOR_ROTATION_AXIS = 'y'
  * Угол открытия от closed (Y=0).
  * Петли из Blender door_left/right (внешний край). Знаки как в классическом Russo.
  */
-export const DOOR_OPEN_ANGLE = (140 * Math.PI) / 180
+export const DOOR_OPEN_ANGLE = (120 * Math.PI) / 180
 export const DOOR_LEFT_OPEN_ANGLE = -DOOR_OPEN_ANGLE
 export const DOOR_RIGHT_OPEN_ANGLE = DOOR_OPEN_ANGLE
 export const DOOR_OPEN_DURATION = 0.8
+/** После фронт-кадра: зум на корпус+дверцы (ножки можно обрезать). */
+export const DOOR_OPEN_ZOOM_DURATION = 0.55
 /** Выдвижение ящика к камере (~6 см в метрах сцены) */
 export const DRAWER_PULL_DISTANCE = 0.12
 export const DRAWER_OPEN_DURATION = 0.55

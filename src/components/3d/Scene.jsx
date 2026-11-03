@@ -20,9 +20,10 @@ import {
   cameraDistance,
   getCabinetCamera,
   getCabinetCameraOpen,
+  getCabinetCameraOpenDetail,
   getCabinetOrbit,
 } from '../../constants/cabinetStudio'
-import { DOOR_OPEN_DURATION } from '../../constants/shkaf'
+import { DOOR_OPEN_DURATION, DOOR_OPEN_ZOOM_DURATION } from '../../constants/shkaf'
 import { cabinetFlags } from '../../utils/cabinetQuery'
 import { Exposure } from './ExposureEffect'
 import CabinetTune from './CabinetTune'
@@ -165,7 +166,7 @@ function CompareCamera() {
   return null
 }
 
-function DoorFrontCamera({ closed, open, duration }) {
+function DoorFrontCamera({ closed, open, detail, duration, zoomDuration }) {
   const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls)
   const doorsOpen = useShkafStore((s) => s.doorsOpen)
@@ -177,37 +178,46 @@ function DoorFrontCamera({ closed, open, duration }) {
       skip.current = false
       return undefined
     }
-    const pose = doorsOpen ? open : closed
-    const dist = cameraDistance(pose)
-    controls.maxDistance = Math.max(controls.minDistance, dist)
+    const wideDist = cameraDistance(open)
+    const closedDist = cameraDistance(closed)
+    controls.maxDistance = Math.max(
+      controls.minDistance,
+      doorsOpen ? wideDist : closedDist,
+    )
     controls.enabled = false
-    const tween = { pos: camera.position, tgt: controls.target }
-    gsap.killTweensOf([tween.pos, tween.tgt])
+    gsap.killTweensOf([camera.position, controls.target])
     const ease = 'power2.out'
-    gsap.to(tween.pos, {
-      x: pose.position[0],
-      y: pose.position[1],
-      z: pose.position[2],
-      duration,
-      ease,
+    const tl = gsap.timeline({
       onUpdate: () => controls.update(),
-    })
-    gsap.to(tween.tgt, {
-      x: pose.target[0],
-      y: pose.target[1],
-      z: pose.target[2],
-      duration,
-      ease,
       onComplete: () => {
         controls.enabled = true
         controls.update()
       },
     })
+    const move = (pose, dur, at) => {
+      tl.to(
+        camera.position,
+        { x: pose.position[0], y: pose.position[1], z: pose.position[2], duration: dur, ease },
+        at,
+      )
+      tl.to(
+        controls.target,
+        { x: pose.target[0], y: pose.target[1], z: pose.target[2], duration: dur, ease },
+        at,
+      )
+    }
+    if (doorsOpen) {
+      move(open, duration, 0)
+      move(detail, zoomDuration, duration)
+    } else {
+      move(closed, duration, 0)
+    }
     return () => {
+      tl.kill()
       gsap.killTweensOf([camera.position, controls.target])
       controls.enabled = true
     }
-  }, [camera, closed, controls, doorsOpen, duration, open])
+  }, [camera, closed, controls, detail, doorsOpen, duration, open, zoomDuration])
 
   return null
 }
@@ -270,6 +280,7 @@ export default function Scene() {
   const bloomThreshold = flags.tune ? tune.bloomThreshold : CABINET_POST.bloomThreshold
   const camera = getCabinetCamera(isMobile)
   const cameraOpen = getCabinetCameraOpen(isMobile)
+  const cameraOpenDetail = getCabinetCameraOpenDetail(isMobile)
   const orbit = getCabinetOrbit(isMobile)
   const doorsOpen = useShkafStore((s) => s.doorsOpen)
   const orbitMaxDistance = doorsOpen ? cameraDistance(cameraOpen) : orbit.maxDistance
@@ -380,7 +391,9 @@ export default function Scene() {
               <DoorFrontCamera
                 closed={camera}
                 open={cameraOpen}
+                detail={cameraOpenDetail}
                 duration={DOOR_OPEN_DURATION}
+                zoomDuration={DOOR_OPEN_ZOOM_DURATION}
               />
             </>
           )}

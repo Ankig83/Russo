@@ -41,11 +41,12 @@ function cameraOffset(cam) {
   return { dist, polar, target: cam.target }
 }
 
-/** Фронт: x=0, тот же polar, дистанция с запасом на открытые дверцы. */
-function frontCameraFrom(cam, distanceScale) {
+/** Фронт: x=0, тот же polar. targetYOffset поднимает кадр с ножек на корпус. */
+function frontCameraFrom(cam, distanceScale, targetYOffset = 0) {
   const { dist: closedDist, polar, target } = cameraOffset(cam)
   const dist = closedDist * distanceScale
-  const [tx, ty, tz] = target
+  const [tx, ty0, tz] = target
+  const ty = ty0 + targetYOffset
   return {
     position: [tx, ty + dist * Math.cos(polar), tz + dist * Math.sin(polar)],
     target: [tx, ty, tz],
@@ -55,9 +56,16 @@ function frontCameraFrom(cam, distanceScale) {
   }
 }
 
+/** Точка отката №1: корпус+дверцы+ножки в кадре. */
 export const CABINET_CAMERA_OPEN = {
   desktop: frontCameraFrom(CABINET_CAMERA.desktop, 1.08),
   mobile: frontCameraFrom(CABINET_CAMERA.mobile, 1.52),
+}
+
+/** Второй шаг: зум, в кадре корпус и дверцы. Ножки не обязательны. */
+export const CABINET_CAMERA_OPEN_DETAIL = {
+  desktop: frontCameraFrom(CABINET_CAMERA.desktop, 0.82, 0.2),
+  mobile: frontCameraFrom(CABINET_CAMERA.mobile, 1.08, 0.16),
 }
 
 export function cameraDistance(cam) {
@@ -569,6 +577,10 @@ export function getCabinetCamera(isMobile) {
 
 export function getCabinetCameraOpen(isMobile) {
   return isMobile ? CABINET_CAMERA_OPEN.mobile : CABINET_CAMERA_OPEN.desktop
+}
+
+export function getCabinetCameraOpenDetail(isMobile) {
+  return isMobile ? CABINET_CAMERA_OPEN_DETAIL.mobile : CABINET_CAMERA_OPEN_DETAIL.desktop
 }
 
 export function getCabinetOrbit(isMobile) {
