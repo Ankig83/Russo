@@ -18,8 +18,11 @@ function isDeployExtra(rel) {
     return !(
       name.startsWith('textures/aged-copper/')
       || name.startsWith('textures/leather/')
+      || name.startsWith('textures/cabinet-props/')
       || name.startsWith('textures/cycles-bake/lm/')
       || name.startsWith('textures/cycles-bake/walnut/')
+      || name.startsWith('textures/cycles-bake/interior/')
+      || name.startsWith('textures/cycles-bake/doors/')
       || name === 'textures/cycles-bake/studio_cycles_2k_raw.hdr'
     )
   }

@@ -20,9 +20,9 @@ const METAL_INSIDE_NAME = [
   /^botella-/i,
   /^door_prop_/i,
 ]
-/** Бокалы / стаканы / бутылка / графин — transmission, не chrome metal env. */
+/** Бокалы / стаканы / хрусталь — transmission. bottle_short это глина, не стекло. */
 const GLASS_PROP_NAME =
-  /^(wine_glass_|glass_tumbler_|crystal_glass_|bottle_short|shelf_glass|cup$|tapa-gleygoyne|johnnie walker)/i
+  /^(wine_glass_|glass_tumbler_|crystal_glass_|shelf_glass|cup$|tapa-gleygoyne|johnnie walker)/i
 const PROP_WOOD_NAME = /^(tray_walnut|book_0\d)$/i
 
 function materialNamesOf(mesh) {

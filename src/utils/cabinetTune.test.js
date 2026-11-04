@@ -10,6 +10,8 @@ describe('classifyCabinetMesh', () => {
     expect(classifyCabinetMesh('tray_walnut').env).toBeNull()
     expect(classifyCabinetMesh('book_01').env).toBeNull()
     expect(classifyCabinetMesh('botella-glengoyne-aro').env).toBe('metal_inside')
+    expect(classifyCabinetMesh('bottle_short').env).toBeNull()
+    expect(classifyCabinetMesh('bottle_short_plug').env).toBeNull()
     expect(classifyCabinetMesh('Cup').env).toBe('glass_prop')
     expect(classifyCabinetMesh('Johnnie Walker BR Whiskey').env).toBe('glass_prop')
     expect(classifyCabinetMesh('tapa-gleygoyne').env).toBe('glass_prop')

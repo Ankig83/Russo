@@ -36,6 +36,7 @@ import {
   syncInteriorShadow,
 } from '../../utils/interiorShadowBake'
 import { applyCabinetTune, useCabinetTune } from '../../utils/cabinetTune'
+import { seatDrawerPlaques } from '../../utils/seatDrawerPlaques'
 import { CABINET_LOOK } from '../../constants/cabinetStudio'
 import { cabinetFlags } from '../../utils/cabinetQuery'
 import { russoLog } from '../../utils/russoLog'
@@ -130,7 +131,8 @@ const NO_CAST_MAT = /glass|mirror|decanter|liquid|whisky|transparent/i
 const LABEL_MAT = /label/i
 const PRINTED_BOTTLE_MAT = /^Material\.005$|^M_Glengoyne_Glass_PBR$/
 const INTERIOR_GLASS_MAT =
-  /^(M_Crystal_Glass|M_Glass_Tumbler|M_Wine_Glass|M_Bottle_Short_Glass|Glass Transparent Principled|glass-top|Glass|Decanter|Johnnie Walker Whiskey)$/i
+  /^(M_Crystal_Glass|M_Glass_Tumbler|M_Wine_Glass|Glass Transparent Principled|glass-top|Glass|Decanter|Johnnie Walker Whiskey)$/i
+const CLAY_BOTTLE_MAT = /^M_Bottle_Short_Glass$/i
 const STRAY_HIDE = /^(botella-glengoyne-aro)$/i
 const RIGHT_TOP_BOTTLE = 'tapa-gleygoyne'
 const RIGHT_TOP_BOTTLE_SCALE = 0.9
@@ -232,6 +234,20 @@ function prepareMaterials(root) {
       if (!mat) return mat
       let use = mat
       const onRightDoor = isUnderDoorRight(obj)
+      // GLB: transmission 0.85 на глиняном альбедо. В браузере это розовое стекло.
+      if (CLAY_BOTTLE_MAT.test(mat.name || '') || /^bottle_short/i.test(obj.name || '')) {
+        use = asPhysical(mat)
+        use.transmission = 0
+        use.transparent = false
+        use.opacity = 1
+        use.metalness = 0
+        use.roughness = 0.42
+        use.color.set('#6e4534')
+        use.thickness = 0
+        use.envMapIntensity = 0.3
+        use.needsUpdate = true
+        return use
+      }
       if (INTERIOR_GLASS_MAT.test(mat.name || '') && !onRightDoor) {
         use = asPhysical(mat)
         const liquid = /whiskey/i.test(use.name || '')
@@ -386,6 +402,8 @@ export default function Shkaf() {
     }
     hideCabinetHinges(model)
     hideCabinetStrays(model)
+    const plaques = seatDrawerPlaques(model)
+    russoLog('info', 'shkaf', 'drawer plaques seated', { plaques })
     fitRightTopBottle(model)
     alignRightDoorFace(model)
     addDoorHandleShadows(model)

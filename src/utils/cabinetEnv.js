@@ -16,6 +16,10 @@ function isUnderDoorRight(mesh) {
 }
 
 function envIntensityFor(mesh, mat, group) {
+  // Имя bottle попало бы в METAL_NAME и дало env 1 — глина стала бы розовым хромом.
+  if (/^bottle_short/i.test(mesh.name || '') || /^M_Bottle_Short_Glass$/i.test(mat.name || '')) {
+    return CABINET_LOOK.envMapIntensity.rest
+  }
   if (group.env === 'base') return CABINET_LOOK.envMapIntensity.base
   if (group.env === 'medallion') return CABINET_LOOK.envMapIntensity.medallion
   if (group.env === 'door_panel') return CABINET_LOOK.envMapIntensity.door_panel
