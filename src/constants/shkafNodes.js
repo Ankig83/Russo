@@ -2,9 +2,11 @@ const assetBase = import.meta.env.BASE_URL
 
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
-/** v56 — door pivots on inner hinges; start with doors open */
-export const SHKAF_MODEL_VERSION = '56'
-export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf.glb?v=${SHKAF_MODEL_VERSION}`
+/** v64 — door panels restored (authored UV, original birch). Walnut samples automap. */
+export const SHKAF_MODEL_VERSION = '69'
+export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf-cabinet.glb?v=${SHKAF_MODEL_VERSION}`
+export const STUDIO_SCENE_VERSION = '1'
+export const STUDIO_SCENE_PATH = `${assetBase}models/studio-scene.glb?v=${STUDIO_SCENE_VERSION}`
 
 /** Ножки model / model.001 из нового экспорта shkaf_.glb — НЕ сжимать meshopt (scale запечён в геометрию) */
 export const SHKAF_LEGS_MODEL_VERSION = '3'
@@ -77,11 +79,11 @@ export const GLB_BACKWALL_ALIGN = {
  */
 export const SHKAF_CLOSED_DOORS_VERSION = '2'
 export const SHKAF_CLOSED_DOORS_PATH = `${assetBase}models/doors-closed.glb?v=${SHKAF_CLOSED_DOORS_VERSION}`
-export const USE_CLOSED_DOORS_FACADE = true
+export const USE_CLOSED_DOORS_FACADE = false
 /** true — closed_doors_facade уже в shkaf.glb; отдельный doors-closed.glb не качаем */
 export const USE_BAKED_CLOSED_DOORS = true
 /** true — карты с фасада на лице door_* (изнанка — тёмная медь) */
-export const USE_AI_DOOR_TEXTURES = true
+export const USE_AI_DOOR_TEXTURES = false
 export const CLOSED_DOORS_NODE_NAME = 'closed_doors_facade'
 /**
  * Подгонка группы к фасаду шкафа.
@@ -127,7 +129,7 @@ export const USE_RUNTIME_LEG_PIPELINE = false
 export const USE_GLB_ENVIRONMENT = false
 
 /** Корневой узел шкафа в Blender */
-export const SHKAF_ROOT_NAME = 'shkaf'
+export const SHKAF_ROOT_NAME = 'SHKAF'
 
 /**
  * Pivot-ноды в GLB — каркас двери, вращение при открытии (материал base_copper).
@@ -377,13 +379,21 @@ export const PLAQUE_MATERIAL_TO_SECTION = {
 }
 
 /** Фронты ящиков drawer_tl/tr/bl/br — кликабельны вместе с tabl_* */
-export const DRAWER_FRONT_NODES = ['drawer_tl', 'drawer_tr', 'drawer_bl', 'drawer_br']
+export const DRAWER_FRONT_NODES = [
+  'drawer_tl',
+  'drawer_tl.001',
+  'drawer_tl.002',
+  'drawer_tl.003',
+  'drawer_tr',
+  'drawer_bl',
+  'drawer_br',
+]
 
 /** @deprecated 2D-оверлеи — таблички теперь в GLB */
 export const DRAWER_PLAQUES = {}
 
 /** Декоративные ноды — не кликабельны (drawer_1/drawer_2 — контейнеры, не трогаем) */
-export const INACTIVE_DRAWER_NODES = new Set(['drawer_1', 'drawer_2'])
+export const INACTIVE_DRAWER_NODES = new Set()
 
 /** @deprecated группы ящиков не используются — каждый ящик кликается сам */
 export const DRAWER_GROUP_SECTIONS = {}
@@ -399,15 +409,11 @@ export const DRAWER_LID_TO_BODY = {}
 
 /**
  * Сопоставление section.id → имя ноды из GLB.
- * Рабочие 4 ящика — отдельные mesh-фронты drawer_tl/tr/bl/br (прямые дети shkaf).
- * После переименования объектов в Blender — обновить значения здесь
- * и поднять SHKAF_MODEL_VERSION на 1.
+ * v57 cinematic: drawer_tl / drawer_tl.001 / .002 / .003 = tl / bl / tr / br.
  */
 export const SHKAF_NODE_MAP = {
   door_left: DOOR_PIVOT_NODES.left,
   door_right: DOOR_PIVOT_NODES.right,
-  drawer_tl: 'drawer_tl',
-  drawer_tr: 'drawer_tr',
-  drawer_bl: 'drawer_bl',
-  drawer_br: 'drawer_br',
+  drawer_1: 'drawer_1',
+  drawer_2: 'drawer_2',
 }

@@ -5,7 +5,7 @@ function search() {
   return new URLSearchParams(window.location.search)
 }
 
-/** ?realtime=1 включает area/spot/directional. ?ao=0 выключает N8AO. ?tone=agx|aces|neutral. ?compare=1 — кадр Cycles. */
+/** ?realtime=1 включает area/spot/directional. ?ao=0 выключает N8AO. ?tone=agx|aces|neutral. ?compare=1 — кадр Cycles. ?tune=1 — живые бегунки света. */
 export function cabinetFlags() {
   const q = search()
   const tone = q.get('tone')
@@ -15,5 +15,6 @@ export function cabinetFlags() {
     ao: q.get('ao') !== '0',
     tone: toneOk ? tone : CABINET_LOOK.tone.mode,
     compare: q.get('compare') === '1',
+    tune: q.get('tune') === '1',
   }
 }

@@ -7,7 +7,7 @@ const FADE_MS = 280
 
 function sideFromSectionId(id) {
   if (!id) return 'right'
-  return /_(tr|br)$/.test(id) ? 'right' : 'left'
+  return id === 'drawer_2' ? 'right' : 'left'
 }
 
 /** Название раздела рядом со шкафом — hover и выдвижение ящика */

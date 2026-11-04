@@ -16,7 +16,7 @@ export default function ProjectCarouselPage({ category }) {
   useEffect(() => {
     if (project) document.title = `${project.title} — Руссо`
     return () => {
-      document.title = 'РУССО — мебельная компания'
+      document.title = 'Руссо'
     }
   }, [project])
 

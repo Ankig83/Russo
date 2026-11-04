@@ -149,6 +149,152 @@ function getContactShadowMap() {
   return contactShadowMap
 }
 
+let strapShadowMap = null
+function getStrapShadowMap() {
+  if (strapShadowMap) return strapShadowMap
+  const w = 64
+  const h = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, w, h)
+  ctx.filter = 'blur(9px)'
+  ctx.fillStyle = 'rgba(0,0,0,0.95)'
+  ctx.beginPath()
+  ctx.roundRect(16, 22, 32, 212, 16)
+  ctx.fill()
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.NoColorSpace
+  tex.needsUpdate = true
+  strapShadowMap = tex
+  return tex
+}
+
+const _shadowBox = new THREE.Box3()
+const _shadowCenter = new THREE.Vector3()
+const _shadowScale = new THREE.Vector3()
+const _shadowQuat = new THREE.Quaternion()
+
+/** Ремни — это вершины ручки, которые торчат вперёд. Кольцо круга в тот же меш не берём. */
+function strapClusters(handle) {
+  const attr = handle.geometry?.attributes?.position
+  if (!attr) return []
+  _shadowBox.setFromObject(handle)
+  if (_shadowBox.isEmpty()) return []
+  const zCut = _shadowBox.max.z - 0.038
+  const m = handle.matrixWorld.elements
+  const bin = 0.008
+  const buckets = new Map()
+  for (let i = 0; i < attr.count; i += 1) {
+    const x = attr.getX(i)
+    const y = attr.getY(i)
+    const z = attr.getZ(i)
+    const wz = m[2] * x + m[6] * y + m[10] * z + m[14]
+    if (wz < zCut) continue
+    const wx = m[0] * x + m[4] * y + m[8] * z + m[12]
+    const wy = m[1] * x + m[5] * y + m[9] * z + m[13]
+    const key = Math.round(wx / bin)
+    let bucket = buckets.get(key)
+    if (!bucket) {
+      bucket = { key, n: 0, minx: wx, maxx: wx, miny: wy, maxy: wy }
+      buckets.set(key, bucket)
+    }
+    bucket.n += 1
+    bucket.minx = Math.min(bucket.minx, wx)
+    bucket.maxx = Math.max(bucket.maxx, wx)
+    bucket.miny = Math.min(bucket.miny, wy)
+    bucket.maxy = Math.max(bucket.maxy, wy)
+  }
+  // Редкие бины между ремнями — заклёпки. Их выкидываем, иначе два ремня склеиваются.
+  const dense = [...buckets.values()].filter((bucket) => bucket.n >= 40)
+  dense.sort((a, b) => a.key - b.key)
+  const clusters = []
+  for (const bucket of dense) {
+    const last = clusters[clusters.length - 1]
+    if (!last || bucket.key - last.lastKey > 1) {
+      clusters.push({
+        minx: bucket.minx,
+        maxx: bucket.maxx,
+        miny: bucket.miny,
+        maxy: bucket.maxy,
+        lastKey: bucket.key,
+      })
+    } else {
+      last.maxx = Math.max(last.maxx, bucket.maxx)
+      last.minx = Math.min(last.minx, bucket.minx)
+      last.miny = Math.min(last.miny, bucket.miny)
+      last.maxy = Math.max(last.maxy, bucket.maxy)
+      last.lastKey = bucket.key
+    }
+  }
+  return clusters.filter((cluster) => cluster.maxx - cluster.minx > 0.008)
+}
+
+/**
+ * Прямой свет выключен, shadow map пустой.
+ * Берёза — door_*_wood в отверстии створки. Пятно кладём на неё, чуть ниже-левее ремня.
+ */
+export function addDoorHandleShadows(root) {
+  if (!root) return 0
+  root.updateWorldMatrix(true, true)
+  const stale = []
+  root.traverse((obj) => {
+    if (obj.name?.startsWith('__handle_shadow_')) stale.push(obj)
+  })
+  for (const obj of stale) {
+    obj.parent?.remove(obj)
+    obj.geometry?.dispose?.()
+    obj.material?.dispose?.()
+  }
+  let added = 0
+  for (const side of ['left', 'right']) {
+    const handle = root.getObjectByName(`door_${side}_handle`)
+    const wood = root.getObjectByName(`door_${side}_wood`)
+    if (!handle?.isMesh || !wood?.isMesh) continue
+    const clusters = strapClusters(handle)
+    if (!clusters.length) continue
+    const woodBox = new THREE.Box3().setFromObject(wood)
+    wood.getWorldScale(_shadowScale)
+    wood.getWorldQuaternion(_shadowQuat)
+    const sx = Math.max(Math.abs(_shadowScale.x), 1e-6)
+    const sy = Math.max(Math.abs(_shadowScale.y), 1e-6)
+    clusters.forEach((cluster, index) => {
+      const width = cluster.maxx - cluster.minx
+      const height = cluster.maxy - cluster.miny
+      _shadowCenter.set(
+        (cluster.minx + cluster.maxx) / 2 - 0.011,
+        (cluster.miny + cluster.maxy) / 2 - 0.016,
+        woodBox.max.z + 0.0022,
+      )
+      wood.worldToLocal(_shadowCenter)
+      const plane = new THREE.Mesh(
+        new THREE.PlaneGeometry((width * 2.15) / sx, (height * 1.12) / sy),
+        new THREE.MeshBasicMaterial({
+          map: getStrapShadowMap(),
+          color: '#120c09',
+          transparent: true,
+          opacity: 0.82,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        }),
+      )
+      plane.name = `__handle_shadow_${side}_${index}`
+      plane.position.copy(_shadowCenter)
+      plane.quaternion.copy(_shadowQuat).invert()
+      plane.renderOrder = 4
+      plane.castShadow = false
+      plane.receiveShadow = false
+      plane.raycast = () => null
+      wood.add(plane)
+      added += 1
+    })
+  }
+  return added
+}
+
 function findBerestaNear(mesh) {
   let scope = mesh.parent
   while (scope) {
@@ -292,6 +438,50 @@ function isLeatherAccentMesh(mesh) {
  * Root cause «ничего не меняется»: на экране был GLB M_Leather_Handle без normal,
  * а async apply не успевал / не перебивал baked материал заметно.
  */
+/** Обод ящика: своя карта кожи, не плоский коричневый. Цвет белый — иначе фото кожи гаснет. */
+export function applyDrawerLeatherRims(root, textures) {
+  if (!root || !textures?.map) return 0
+  const repeat = [10, 2.6]
+  const map = cloneTiled(textures.map, repeat)
+  const mat = new THREE.MeshPhysicalMaterial({
+    name: 'M_Drawer_Leather',
+    // Внутри шкафа прямого света нет: env даёт серый обод, без него — чёрная рамка.
+    // Зерно кожи держит emissiveMap, env только на мягкий блик по ребру.
+    color: '#6a3e28',
+    map,
+    roughnessMap: cloneTiled(textures.roughnessMap, repeat),
+    roughness: 0.72,
+    metalness: 0,
+    normalMap: cloneTiled(textures.normalMap, repeat),
+    normalScale: new THREE.Vector2(2.1, 2.1),
+    bumpMap: cloneTiled(textures.bumpMap, repeat),
+    bumpScale: 0.07,
+    envMapIntensity: 0.12,
+    specularColor: new THREE.Color('#4a2818'),
+    specularIntensity: 0.35,
+    lightMap: null,
+    emissive: new THREE.Color('#5a301c'),
+    emissiveMap: map,
+    emissiveIntensity: 0.12,
+    sheen: 0.28,
+    sheenRoughness: 0.7,
+    sheenColor: new THREE.Color('#4a2818'),
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  })
+  let applied = 0
+  root.traverse((child) => {
+    if (!child.isMesh || !/leather_rim/i.test(child.name || '')) return
+    child.material = mat
+    child.castShadow = true
+    child.receiveShadow = true
+    applied += 1
+  })
+  return applied
+}
+
 export function applyLeatherAccentMaterials(root, textures) {
   if (!root || !textures?.map) return 0
   if (!textures.normalMap) {

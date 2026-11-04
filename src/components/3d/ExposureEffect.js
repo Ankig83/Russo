@@ -15,6 +15,14 @@ class ExposureEffect extends Effect {
       uniforms: new Map([['exposure', new Uniform(exposure)]]),
     })
   }
+
+  get exposure() {
+    return this.uniforms.get('exposure').value
+  }
+
+  set exposure(value) {
+    this.uniforms.get('exposure').value = value
+  }
 }
 
 /** Линейный множитель до ToneMapping. gl.toneMappingExposure на этот пасс не влияет. */

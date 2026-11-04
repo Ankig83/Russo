@@ -1,10 +1,6 @@
 /**
- * Create door_left / door_right hinge pivots for cinematic shkaf.glb
- * and reparent door meshes (frames, skins, bins, trim) under them.
- *
- * Hinges = outer edges (same convention as scripts/split_doors_glb.mjs).
- *
- * Usage: node scripts/setup_door_pivots.mjs [in.glb] [out.glb]
+ * Parent door assemblies under door_left / door_right (inner hinges).
+ * New blend hierarchy: node_0.007 = left door root, node_0.006 = right.
  */
 import fs from 'fs'
 import path from 'path'
@@ -18,20 +14,12 @@ import { dequantize, meshopt } from '@gltf-transform/functions'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
 
-const LEFT_MESHES = [
-  'Cube', // inner frame
-  'node_0.007', // outer skin Material.006
-  'node_0.012', // bin Material.010
-  'node_0.013', // bin Material.010
-  'node_0.010', // trim Material.008
-]
-const RIGHT_MESHES = [
-  'Cube.001',
-  'node_0.006',
-  'node_0.003',
-  'node_0.004',
-  'node_0.011',
-]
+/** Door assembly roots (children already include frames/bins/trim) */
+const LEFT_ROOTS = ['node_0.007']
+const RIGHT_ROOTS = ['node_0.006']
+/** Fallback: individual meshes if assemblies missing */
+const LEFT_MESHES = ['Cube', 'node_0.007', 'node_0.012', 'node_0.013', 'node_0.010']
+const RIGHT_MESHES = ['Cube.001', 'node_0.006', 'node_0.003', 'node_0.004', 'node_0.011']
 
 const inPath = path.resolve(process.argv[2] || path.join(ROOT, 'public/models/shkaf.glb'))
 const outPath = path.resolve(process.argv[3] || inPath)
@@ -49,7 +37,6 @@ const io = new NodeIO()
 console.log('Read', inPath)
 const document = await io.read(inPath)
 await document.transform(dequantize())
-
 const root = document.getRoot()
 
 function findNode(name) {
@@ -117,43 +104,48 @@ function reparentKeepWorld(node, newParent) {
 }
 
 function worldAABB(node) {
-  const mesh = node.getMesh()
-  if (!mesh) return null
-  const mw = worldMatrix(node)
-  const min = new THREE.Vector3(Infinity, Infinity, Infinity)
-  const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity)
-  const v = new THREE.Vector3()
-  for (const prim of mesh.listPrimitives()) {
-    const pos = prim.getAttribute('POSITION')
-    if (!pos) continue
-    const a = pos.getArray()
-    for (let i = 0; i < pos.getCount(); i += 1) {
-      v.set(a[i * 3], a[i * 3 + 1], a[i * 3 + 2]).applyMatrix4(mw)
-      min.min(v)
-      max.max(v)
+  const boxes = []
+  const stack = [node]
+  while (stack.length) {
+    const n = stack.pop()
+    for (const c of n.listChildren()) stack.push(c)
+    const mesh = n.getMesh()
+    if (!mesh) continue
+    const mw = worldMatrix(n)
+    const min = new THREE.Vector3(Infinity, Infinity, Infinity)
+    const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity)
+    const v = new THREE.Vector3()
+    for (const prim of mesh.listPrimitives()) {
+      const pos = prim.getAttribute('POSITION')
+      if (!pos) continue
+      const a = pos.getArray()
+      for (let i = 0; i < pos.getCount(); i += 1) {
+        v.set(a[i * 3], a[i * 3 + 1], a[i * 3 + 2]).applyMatrix4(mw)
+        min.min(v)
+        max.max(v)
+      }
     }
+    if (Number.isFinite(min.x)) boxes.push({ min, max })
+  }
+  if (!boxes.length) return null
+  const min = boxes[0].min.clone()
+  const max = boxes[0].max.clone()
+  for (const b of boxes) {
+    min.min(b.min)
+    max.max(b.max)
   }
   return { min, max }
 }
 
-function unionAABB(nodes) {
-  const min = new THREE.Vector3(Infinity, Infinity, Infinity)
-  const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity)
-  for (const n of nodes) {
-    const bb = worldAABB(n)
-    if (!bb) continue
-    min.min(bb.min)
-    max.max(bb.max)
-  }
-  if (!Number.isFinite(min.x)) return null
-  return { min, max }
+function resolveAssemblies(preferred, fallback) {
+  const found = preferred.map(findNode).filter(Boolean)
+  if (found.length) return found
+  return fallback.map(findNode).filter(Boolean)
 }
 
-// Remove stale pivots if re-running
 for (const name of ['door_left', 'door_right']) {
   const existing = findNode(name)
   if (!existing) continue
-  // Move children back to shkaf before dispose
   const shkafTmp = findNode('shkaf')
   for (const child of [...existing.listChildren()]) {
     if (shkafTmp) reparentKeepWorld(child, shkafTmp)
@@ -166,42 +158,37 @@ for (const name of ['door_left', 'door_right']) {
 const shkaf = findNode('shkaf')
 if (!shkaf) throw new Error('shkaf root missing')
 
-const leftNodes = LEFT_MESHES.map(findNode).filter(Boolean)
-const rightNodes = RIGHT_MESHES.map(findNode).filter(Boolean)
+const leftNodes = resolveAssemblies(LEFT_ROOTS, LEFT_MESHES)
+const rightNodes = resolveAssemblies(RIGHT_ROOTS, RIGHT_MESHES)
 console.log(
   'left',
   leftNodes.map((n) => n.getName()),
   'right',
   rightNodes.map((n) => n.getName()),
 )
-if (leftNodes.length < 2 || rightNodes.length < 2) {
-  throw new Error('too few door meshes found')
-}
+if (!leftNodes.length || !rightNodes.length) throw new Error('door assemblies missing')
 
-const leftBB = unionAABB(leftNodes)
-const rightBB = unionAABB(rightNodes)
+const leftBB = worldAABB(leftNodes[0])
+const rightBB = worldAABB(rightNodes[0])
 if (!leftBB || !rightBB) throw new Error('AABB failed')
 
 const midYL = (leftBB.min.y + leftBB.max.y) * 0.5
-const midZL = (leftBB.min.z + leftBB.max.z) * 0.5
 const midYR = (rightBB.min.y + rightBB.max.y) * 0.5
-const midZR = (rightBB.min.z + rightBB.max.z) * 0.5
+// Передний торец двери (к камере, +Z) — петля на переднем внешнем углу.
+const frontZL = leftBB.max.z
+const frontZR = rightBB.max.z
 
-// Внутренние петли у шва (как door_left/right Empty в Blender ~±0.54).
-// Внешний край + текущие DOOR_*_OPEN_ANGLE давали распах ~180° не в ту сторону.
-const hingeLWorld = new THREE.Vector3(leftBB.max.x, midYL, midZL)
-const hingeRWorld = new THREE.Vector3(rightBB.min.x, midYR, midZR)
+// Внешние петли: створки уходят в стороны; front Z — без «провала» назад.
+const hingeLWorld = new THREE.Vector3(leftBB.min.x, midYL, frontZL)
+const hingeRWorld = new THREE.Vector3(rightBB.max.x, midYR, frontZR)
 const shkafWorldInv = worldMatrix(shkaf).clone().invert()
 const hingeL = hingeLWorld.clone().applyMatrix4(shkafWorldInv)
 const hingeR = hingeRWorld.clone().applyMatrix4(shkafWorldInv)
 
-console.log('hingeL local', [...hingeL].map((v) => +v.toFixed(4)))
-console.log('hingeR local', [...hingeR].map((v) => +v.toFixed(4)))
-console.log('leftBB X', leftBB.min.x.toFixed(3), leftBB.max.x.toFixed(3))
-console.log('rightBB X', rightBB.min.x.toFixed(3), rightBB.max.x.toFixed(3))
+console.log('hingeL', [...hingeL].map((v) => +v.toFixed(4)))
+console.log('hingeR', [...hingeR].map((v) => +v.toFixed(4)))
 
 const doorLeft = document.createNode('door_left')
-// v46SplitDoors: setClosedDoorsLook не прячет рабочие двери при отсутствии facade
 doorLeft.setExtras({ cinematicDoorPivot: true, v46SplitDoors: true })
 doorLeft.setTranslation([hingeL.x, hingeL.y, hingeL.z])
 doorLeft.setRotation([0, 0, 0, 1])

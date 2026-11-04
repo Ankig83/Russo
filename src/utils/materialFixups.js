@@ -763,6 +763,96 @@ export function applyEnvMapIntensityFixups(root) {
   })
 }
 
+/**
+ * M_AgedCopper (bake) — металл должен читать IBL.
+ * Root cause: baked MR + низкий scene.env + дефолтный envMapIntensity → чёрный мат.
+ */
+function tuneAgedCopperMaterial(mat) {
+  if (!mat.isMeshStandardMaterial && !mat.isMeshPhysicalMaterial) return
+  const p = CORPUS_PBR.agedCopper
+  if (!p) return
+
+  mat.metalness = p.metalness
+  if (mat.roughnessMap) {
+    mat.roughness = Math.max(p.roughnessMin, (mat.roughness ?? 1) * p.roughnessMul)
+  } else {
+    mat.roughness = Math.max(p.roughnessMin, mat.roughness ?? p.roughnessMin)
+  }
+
+  if ('envMapIntensity' in mat) mat.envMapIntensity = p.env
+  if ('specularIntensity' in mat) {
+    mat.specularIntensity = Math.min(p.specular, MATERIAL_SPECULAR_CAP)
+  }
+  if (mat.normalMap && mat.normalScale) {
+    mat.normalScale.set(p.normalScale, p.normalScale)
+  }
+
+  mat.needsUpdate = true
+}
+
+export function applyAgedCopperMaterialFixups(root) {
+  root.traverse((child) => {
+    if (!child.isMesh || !child.material) return
+    const materials = Array.isArray(child.material) ? child.material : [child.material]
+    materials.forEach((mat) => {
+      if (mat?.name === 'M_AgedCopper') tuneAgedCopperMaterial(mat)
+    })
+  })
+}
+
+/**
+ * M_GreenAcrylic → MeshPhysical + clearcoat.
+ * Root cause: Standard без clearcoat = матовая штукатурка, не акрил/лак из Cycles.
+ */
+const acrylicConverted = new WeakMap()
+
+function toPhysicalIfNeeded(mat) {
+  if (mat.isMeshPhysicalMaterial) return mat
+  if (!mat.isMeshStandardMaterial) return mat
+  if (acrylicConverted.has(mat)) return acrylicConverted.get(mat)
+
+  const phys = new THREE.MeshPhysicalMaterial()
+  THREE.MeshStandardMaterial.prototype.copy.call(phys, mat)
+  phys.name = mat.name
+  acrylicConverted.set(mat, phys)
+  acrylicConverted.set(phys, phys)
+  return phys
+}
+
+function tuneGreenAcrylicMaterial(mat) {
+  const p = CORPUS_PBR.greenAcrylic
+  if (!p) return mat
+
+  const phys = toPhysicalIfNeeded(mat)
+  phys.metalness = p.metalness
+  if (phys.roughnessMap) {
+    phys.roughness = Math.max(p.roughnessMin, (phys.roughness ?? 1) * p.roughnessMul)
+  } else {
+    phys.roughness = Math.max(p.roughnessMin, phys.roughness ?? p.roughnessMin)
+  }
+  if ('envMapIntensity' in phys) phys.envMapIntensity = p.env
+  phys.clearcoat = p.clearcoat
+  phys.clearcoatRoughness = p.clearcoatRoughness
+  if ('specularIntensity' in phys) {
+    phys.specularIntensity = Math.min(p.specular, MATERIAL_SPECULAR_CAP)
+  }
+  phys.needsUpdate = true
+  return phys
+}
+
+export function applyGreenAcrylicMaterialFixups(root) {
+  root.traverse((child) => {
+    if (!child.isMesh || !child.material) return
+    const remap = (mat) => {
+      if (mat?.name !== 'M_GreenAcrylic') return mat
+      return tuneGreenAcrylicMaterial(mat)
+    }
+    child.material = Array.isArray(child.material)
+      ? child.material.map(remap)
+      : remap(child.material)
+  })
+}
+
 export function applyRawMaterialPipeline(root) {
   fixGltfTextureColorSpaces(root)
 
@@ -772,6 +862,8 @@ export function applyRawMaterialPipeline(root) {
   }
 
   applyEnvMapIntensityFixups(root)
+  applyAgedCopperMaterialFixups(root)
+  applyGreenAcrylicMaterialFixups(root)
   applyRawCorpusMaterialFixups(root)
   applyDoorPanelMaterialFixups(root)
   applyPlainCopperMaterialFixups(root)

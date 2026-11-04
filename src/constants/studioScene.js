@@ -12,9 +12,9 @@ export const USE_MATERIAL_FIXUPS = true
 
 /**
  * Тёмное дерево (dark-wood-stain) на корпус снаружи + внутри + дверки.
- * false — вернуть материалы из GLB.
+ * false — материалы из GLB (M_AgedCopper / M_GreenAcrylic после bake).
  */
-export const USE_WOOD_DOORS = true
+export const USE_WOOD_DOORS = false
 
 /**
  * Бронза (bronze-unity pack) только на ножки.
@@ -73,15 +73,15 @@ export const USE_NO_LIGHTS = false
 export const HERO = {
   background: '#000000',
   /**
-   * В Blender world strength ≈ 0.035 (почти void).
-   * Лёгкий LDR только для микробликов на металле — не заливка сцены.
+   * IBL для бликов на меди/латуни.
+   * P0: было 0.08 + LDR — металл тонул в чёрном; HDR + 0.45 читает отражения.
    */
   env: {
     url: `${assetBase}HDRI/studio_small_08_2k.hdr?v=1`,
     ldrUrl: `${assetBase}HDRI/hunyuan_gallery_eq.webp?v=1`,
-    useLdr: true,
+    useLdr: false,
     preset: null,
-    intensity: 0.08,
+    intensity: 0.45,
     background: false,
   },
   /** CINEMATIC_CAMERA: 75mm / sensor 36 → fov ≈ 27° */
@@ -106,10 +106,11 @@ export const HERO = {
     aimAt: [0, 1.35, 0],
     width: 5,
     height: 5,
-    closedIntensity: 1.85,
-    openIntensity: 1.15,
+    /** P0: area — форма; не гасить при open */
+    closedIntensity: 2.1,
+    openIntensity: 1.55,
   },
-  /** Shadow-only вдоль KEY — RectArea в three.js не умеет castShadow */
+  /** Shadow-only вдоль KEY — не должен быть главным «прожектором» кадра */
   shadowSpot: {
     color: '#ffd1a5',
     position: [-3.5, 5.4, 5.2],
@@ -118,8 +119,9 @@ export const HERO = {
     penumbra: 1,
     distance: 28,
     decay: 1.4,
-    closedIntensity: 14,
-    openIntensity: 10,
+    /** P0: было 14/10 — пятно забивало area + IBL */
+    closedIntensity: 3.5,
+    openIntensity: 2.4,
     shadow: {
       mapSize: 2048,
       radius: 10,
@@ -137,7 +139,7 @@ export const HERO = {
     aimAt: [0, 1.55, 0],
     width: 3,
     height: 3,
-    intensity: 0.85,
+    intensity: 1.15,
   },
   /** FILL_LIGHT — Area DISK Ø5, energy 240 */
   fillLight: {
@@ -147,7 +149,7 @@ export const HERO = {
     aimAt: [0, 1.3, 0],
     width: 5,
     height: 5,
-    intensity: 0.42,
+    intensity: 0.72,
   },
   /** TOP_RIM_LIGHT — Area DISK Ø4, energy 950 */
   topRimLight: {
@@ -157,7 +159,7 @@ export const HERO = {
     aimAt: [0, 1.7, 0],
     width: 4,
     height: 4,
-    intensity: 1.05,
+    intensity: 1.25,
   },
   /** В cinematic-риге Blender kick/ambient нет */
   legKickLight: null,
@@ -196,10 +198,11 @@ export const HERO = {
     temperature: 2700,
     position: [0, 2.22, 0.02],
     aimAt: [0, 1.1, -0.15],
-    width: 1.35,
-    height: 0.14,
-    closedIntensity: 0,
-    openIntensity: 1.05,
+    width: 1.45,
+    height: 0.18,
+    /** P1: лёгкий fill при закрытых; при open — читаемые ящики/акрил */
+    closedIntensity: 0.18,
+    openIntensity: 1.65,
   },
   /** Mossy Dark Rock из blend — без Displacement (только PBR maps) */
   floor: {
@@ -211,7 +214,19 @@ export const HERO = {
     roughness: 1,
     metalness: 0,
     falloff: { inner: 2.2, outer: 7.5 },
-    shadowOpacity: 0.42,
+    shadowOpacity: 0.5,
+    /**
+     * P1: мягкий контакт под ножками (круг, не ContactShadows-квадрат).
+     * ContactShadows на hero давал чёрный прямоугольник на диске пола.
+     */
+    softContact: {
+      enabled: true,
+      radius: 1.55,
+      y: 0.006,
+      opacity: 0.32,
+      inner: 0.35,
+      outer: 1.0,
+    },
   },
   /** Dark Mottled Metal — задник, имитация STUDIO_CYCLORAMA */
   cyclorama: {
@@ -231,11 +246,11 @@ export const HERO = {
     scale: 2.6,
     color: '#000000',
   },
-  /** AgX exposure 0 в Blender; ACES чуть ярче — 0.85 */
-  toneMappingExposure: 0.85,
+  /** AgX exposure 0 в Blender; после поднятия IBL чуть ниже 1 */
+  toneMappingExposure: 0.92,
   postprocessing: {
-    aoRadius: 0.28,
-    aoIntensity: 1.15,
+    aoRadius: 0.32,
+    aoIntensity: 1.35,
     bloomIntensity: 0.008,
     bloomThreshold: 1.3,
     bloomSmoothing: 0.3,
@@ -283,6 +298,32 @@ export const CORPUS_PBR = {
     specular: 0.07,
   },
   /**
+   * M_AgedCopper (bake Metal Brown Medium) — корпус + внутрянка дверок.
+   * P0: сильный env, иначе при слабом IBL выглядит чёрным матом.
+   */
+  agedCopper: {
+    metalness: 1,
+    /** пол ниже map — не давать карте убить блик */
+    roughnessMin: 0.28,
+    roughnessMul: 0.92,
+    env: 1.15,
+    specular: 0.14,
+    normalScale: 0.85,
+  },
+  /**
+   * M_GreenAcrylic (bake Sage Green Venetian Plaster) — ящики.
+   * P1: MeshPhysical + clearcoat ≈ лак/акрил в Cycles (без full transmission).
+   */
+  greenAcrylic: {
+    metalness: 0,
+    roughnessMul: 0.88,
+    roughnessMin: 0.18,
+    env: 0.55,
+    clearcoat: 0.72,
+    clearcoatRoughness: 0.2,
+    specular: 0.35,
+  },
+  /**
    * Панель двери (patina_PBR) — сохраняем GLB baseColor с патиной.
    * В hero-lightbox режиме HDRI выключен, поэтому pure-metal карта тонет в тени:
    * умеренный metalness даёт читать albedo под прямым RectAreaLight.
@@ -325,6 +366,8 @@ export const MATERIAL_ENV_INTENSITY = {
   'Scratched copper metal': 0.9,
   'M_Brass_Premium.001': 0.95,
   'M_Brass_Rivet': 0.85,
+  M_AgedCopper: 1.2,
+  M_GreenAcrylic: 0.55,
   door_side: 0.75,
   door_back: 0.75,
   'door_back.001': 0.75,
@@ -607,6 +650,7 @@ export function getStudioCameraConfig(isMobile) {
 }
 
 export function getStudioOrbitConfig(isMobile) {
+  if (DEBUG_LOG_CAMERA_POSITION) return CAMERA_FRAMING_ORBIT
   if (!isMobile) return STUDIO.orbit
   return { ...STUDIO.orbit, ...STUDIO_MOBILE.orbit }
 }
@@ -653,7 +697,27 @@ export const CAMERA_INTRO = {
   ease: 'power3.out',
 }
 
+/**
+ * true — постановка камеры на сайте:
+ * свободный orbit (без витринных лимитов), лог pos/target в консоль + HUD.
+ * После выбора кадра — false и вписать значения в HERO.camera / HERO.cameraMobile.
+ */
 export const DEBUG_LOG_CAMERA_POSITION = true
+
+/** Orbit при постановке — не упираться в ±24° / panLimits */
+export const CAMERA_FRAMING_ORBIT = {
+  minAzimuth: -Math.PI,
+  maxAzimuth: Math.PI,
+  minPolar: 0.05,
+  maxPolar: Math.PI / 2 - 0.02,
+  minDistance: 1,
+  maxDistance: 40,
+  enablePan: true,
+  panLimits: null,
+  rotateSpeed: 0.9,
+  zoomSpeed: 1,
+  panSpeed: 1.1,
+}
 
 /**
  * GPU-профили — Scene выбирает tier автоматически (desktop → medium).
@@ -683,11 +747,12 @@ export const STUDIO_PERFORMANCE = {
       dpr: [1, 1.75],
       antialias: true,
       postFX: true,
-      n8ao: false,
+      /** P1: AO даёт щели/объём как слабый GI; mobile остаётся low без n8ao */
+      n8ao: true,
       bloom: true,
       noise: false,
       multisampling: 4,
-      normalPass: false,
+      normalPass: true,
       shadowMapSize: 1024,
       contactShadowResolution: 1024,
       floorPlaneSize: [18, 18],

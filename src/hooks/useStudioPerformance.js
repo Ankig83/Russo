@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { STUDIO_PERFORMANCE } from '../constants/studioScene'
+import { STUDIO_PERFORMANCE } from '../constants/cabinetStudio'
 import { useIsMobile } from './useMediaQuery'
 
 function tierFromUrl() {

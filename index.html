@@ -4,16 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>РУССО — мебельная компания</title>
+    <title>Руссо</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500&family=Outfit:wght@300;400;500&display=swap"
       rel="stylesheet"
     />
-    <!-- URL должен совпадать с SHKAF_MODEL_PATH (?v=) — иначе двойная загрузка.
-         shkaf-legs не прелоадим: USE_BAKED_LEGS=true, ножки уже в shkaf.glb -->
-    <link rel="preload" href="/models/shkaf.glb?v=49" as="fetch" crossorigin />
+    <!-- URL должен совпадать с SHKAF_MODEL_PATH / STUDIO_SCENE_PATH (?v=) -->
+        <link rel="preload" href="/models/shkaf-cabinet.glb?v=69" as="fetch" crossorigin />
+    <link rel="preload" href="/models/studio-scene.glb?v=1" as="fetch" crossorigin />
     <link rel="preload" href="/images/russo-logo.svg" as="image" />
   </head>
   <body>

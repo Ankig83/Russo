@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js'
 import { CABINET_LIGHTS } from '../../constants/cabinetStudio'
 import { cabinetFlags } from '../../utils/cabinetQuery'
+import { useCabinetTune } from '../../utils/cabinetTune'
 
 function AimedRect({ position, aim, width, height, intensity, color }) {
   const ref = useRef(null)
@@ -129,7 +130,25 @@ function KeyShadow({ position, intensity, color, mapSize, aim }) {
 }
 
 export default function CabinetLights({ shadowMapSize = 1024 }) {
-  const realtime = cabinetFlags().realtime
+  const flags = cabinetFlags()
+  const tune = useCabinetTune()
+  const realtime = flags.tune ? tune.realtime : flags.realtime
+  const lamps = tune.lamps
+  const lit = flags.tune
+    ? {
+        ...CABINET_LIGHTS,
+        ambient: lamps.ambient,
+        key: { ...CABINET_LIGHTS.key, intensity: lamps.key },
+        fill: { ...CABINET_LIGHTS.fill, intensity: lamps.fill },
+        rimLeft: { ...CABINET_LIGHTS.rimLeft, intensity: lamps.rimLeft },
+        rimRight: { ...CABINET_LIGHTS.rimRight, intensity: lamps.rimRight },
+        interior: { ...CABINET_LIGHTS.interior, intensity: lamps.interior },
+        interiorSpot: { ...CABINET_LIGHTS.interiorSpot, intensity: lamps.interiorSpot },
+        shadow: { ...CABINET_LIGHTS.shadow, intensity: lamps.shadow },
+        backdropSpot: { ...CABINET_LIGHTS.backdropSpot, intensity: lamps.backdropSpot },
+        floorPool: { ...CABINET_LIGHTS.floorPool, intensity: lamps.floorPool },
+      }
+    : CABINET_LIGHTS
 
   useEffect(() => {
     if (!realtime) return
@@ -139,7 +158,7 @@ export default function CabinetLights({ shadowMapSize = 1024 }) {
   if (!realtime) return null
 
   const { ambient, aim, key, fill, rimLeft, rimRight, interior, interiorSpot, backdropSpot, shadow, floorPool } =
-    CABINET_LIGHTS
+    lit
 
   return (
     <>

@@ -45,6 +45,59 @@ ${shader.fragmentShader}`
   }
 }
 
+function SoftContactBlob() {
+  const cfg = HERO.floor?.softContact
+  const ref = useRef(null)
+  useFloorLayer(ref)
+
+  if (!cfg?.enabled) return null
+
+  const inner = cfg.inner ?? 0.35
+  const outer = cfg.outer ?? 1
+  const opacity = cfg.opacity ?? 0.3
+
+  return (
+    <mesh
+      ref={ref}
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, cfg.y ?? 0.006, 0]}
+      raycast={() => null}
+      renderOrder={2}
+    >
+      <circleGeometry args={[cfg.radius ?? 1.5, 64]} />
+      <shaderMaterial
+        transparent
+        depthWrite={false}
+        toneMapped={false}
+        uniforms={{
+          uOpacity: { value: opacity },
+          uInner: { value: inner },
+          uOuter: { value: outer },
+        }}
+        vertexShader={`
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `}
+        fragmentShader={`
+          uniform float uOpacity;
+          uniform float uInner;
+          uniform float uOuter;
+          varying vec2 vUv;
+          void main() {
+            float d = length(vUv - vec2(0.5)) * 2.0;
+            float a = (1.0 - smoothstep(uInner, uOuter, d)) * uOpacity;
+            if (a < 0.004) discard;
+            gl_FragColor = vec4(0.0, 0.0, 0.0, a);
+          }
+        `}
+      />
+    </mesh>
+  )
+}
+
 function FloorDisc({ maps }) {
   const { floor } = HERO
   const matRef = useRef(null)
@@ -93,6 +146,7 @@ function FloorDisc({ maps }) {
         <circleGeometry args={[floor.radius, 128]} />
         <shadowMaterial transparent opacity={floor.shadowOpacity ?? 0.58} color="#000000" />
       </mesh>
+      <SoftContactBlob />
     </group>
   )
 }

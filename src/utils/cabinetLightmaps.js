@@ -141,7 +141,7 @@ function textureFor(file, channel) {
   })
 }
 
-function assignToMesh(mesh, tex, channel) {
+function assignToMesh(mesh, tex, channel, intensity = CABINET_LOOK.lightmap.intensity, fill = null) {
   const useChannel = resolveChannel(mesh, channel)
   if (useChannel == null) return false
   const map = tex.channel === useChannel ? tex : tex.clone()
@@ -150,15 +150,44 @@ function assignToMesh(mesh, tex, channel) {
   const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
   const next = list.map((mat) => {
     if (!mat) return mat
-    if (mat.lightMap === map && mat.lightMapIntensity === CABINET_LOOK.lightmap.intensity) return mat
+    if (mat.lightMap === map && mat.lightMapIntensity === intensity) return mat
     const cloned = mat.clone()
     cloned.lightMap = map
-    cloned.lightMapIntensity = CABINET_LOOK.lightmap.intensity
+    cloned.lightMapIntensity = intensity
+    // Где в bake ноль, lightMap не поднять умножением — нужен заполняющий emissive.
+    if (fill && cloned.map && cloned.emissive) {
+      cloned.userData.lightFill = fill
+      cloned.emissive.set(fill.color)
+      cloned.emissiveMap = cloned.map
+      cloned.emissiveIntensity = fill.intensity
+    }
     cloned.needsUpdate = true
     return cloned
   })
   mesh.material = Array.isArray(mesh.material) ? next : next[0]
   return true
+}
+
+/** Ящики / левая дверка / кожаный обод — bake снят, но HMR мог оставить lightMap на материале. */
+const STRIP_LIGHTMAP = /^(drawer_[12]|modul_drawer(_back)?|drawer_leather_rim_|door_(left|right)_(wood|detail)|back_wall)/i
+
+function stripUnwantedLightmaps(root) {
+  let cleared = 0
+  root.traverse((obj) => {
+    if (!obj.isMesh || !STRIP_LIGHTMAP.test(obj.name || '')) return
+    const list = Array.isArray(obj.material) ? obj.material : [obj.material]
+    const next = list.map((mat) => {
+      if (!mat?.lightMap) return mat
+      const cloned = mat.clone()
+      cloned.lightMap = null
+      cloned.lightMapIntensity = 1
+      cloned.needsUpdate = true
+      return cloned
+    })
+    obj.material = Array.isArray(obj.material) ? next : next[0]
+    cleared += 1
+  })
+  return cleared
 }
 
 export async function applyCabinetLightmaps(root, gl) {
@@ -189,7 +218,7 @@ export async function applyCabinetLightmaps(root, gl) {
         const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
         if (skip && list.every((mat) => skip.test(mat?.name || ''))) continue
         const before = list.map((mat) => mat)
-        const ok = assignToMesh(mesh, tex, entry.channel)
+        const ok = assignToMesh(mesh, tex, entry.channel, entry.intensity, entry.fill)
         if (!ok) continue
         if (skip) {
           const current = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
@@ -210,10 +239,12 @@ export async function applyCabinetLightmaps(root, gl) {
 
   const waiting = []
   const bare = []
-  const bakeRe = new RegExp(`^${CABINET_LOOK.awaitingBake}`, 'i')
+  const bakeRe = CABINET_LOOK.awaitingBake
+    ? new RegExp(`^${CABINET_LOOK.awaitingBake}`, 'i')
+    : null
   root.traverse((obj) => {
     if (!obj.isMesh) return
-    if (bakeRe.test(obj.name || '')) waiting.push(obj.name)
+    if (bakeRe?.test(obj.name || '')) waiting.push(obj.name)
     if (!litMeshes.has(obj)) bare.push(obj.name)
   })
   if (waiting.length) {
@@ -222,5 +253,7 @@ export async function applyCabinetLightmaps(root, gl) {
   if (bare.length) {
     console.warn(`[lightmap] без карты (${bare.length}): ${bare.join(', ')}`)
   }
-  return { applied, missing: bare }
+  const stripped = stripUnwantedLightmaps(root)
+  if (stripped) console.info(`[lightmap] снято с ${stripped} mesh (ящики / левая дверь / кожа)`)
+  return { applied, missing: bare, stripped }
 }

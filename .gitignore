@@ -36,3 +36,6 @@ public/models/_opt_work/
 # Python cache (Blender-скрипты)
 __pycache__/
 *.pyc
+
+# Локальный деплой на Beget: SSH-пароль, в git не кладём и в dist не копируется
+deploy/deploy-beget.local.py

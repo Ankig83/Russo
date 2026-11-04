@@ -109,8 +109,10 @@ function softenBakedWalnut(mat) {
   if ('specularColorMap' in mat) mat.specularColorMap = null
   mat.metalness = 0
   mat.roughness = Math.max(CABINET_LOOK.walnut.roughness, CABINET_LOOK.walnut.roughnessFloor)
-  mat.emissive.set('#000000')
-  mat.emissiveIntensity = 0
+  const fill = mat.userData.lightFill
+  mat.emissive.set(fill ? fill.color : '#000000')
+  mat.emissiveMap = fill ? mat.map : null
+  mat.emissiveIntensity = fill ? fill.intensity : 0
   if (mat.normalScale) mat.normalScale.set(0, 0)
   mat.needsUpdate = true
 }
@@ -183,6 +185,8 @@ export function loadWalnutBake() {
       tex.generateMipmaps = true
       tex.minFilter = THREE.LinearMipmapLinearFilter
       tex.anisotropy = 16
+      // Шпон лежит на automap = TEXCOORD_1. Канал 0 — это UVMap, на нём рисунок рвётся.
+      tex.channel = 1
       tex.needsUpdate = true
     }
     return { baseColor, roughness, normal }
@@ -199,13 +203,29 @@ export function applyWalnutBake(root, textures) {
     const next = list.map((mat) => {
       if (!WALNUT_RE.test(mat?.name || '')) return mat
       const cloned = mat.clone()
-      cloned.map = textures.baseColor
+      // GLB кладёт шпон на automap (TEXCOORD_1). Общие PNG по умолчанию сидят на канале 0.
+      const channel = cloned.map?.channel ?? 1
+      const onChannel = (tex) => {
+        if (!tex || tex.channel === channel) return tex
+        const copy = tex.clone()
+        copy.channel = channel
+        copy.needsUpdate = true
+        return copy
+      }
+      cloned.map = onChannel(textures.baseColor)
       cloned.color.set('#ffffff')
-      cloned.roughnessMap = textures.roughness
-      cloned.normalMap = textures.normal
+      cloned.roughnessMap = onChannel(textures.roughness)
+      cloned.normalMap = onChannel(textures.normal)
+      // Сила 0.2 уже внутри PNG. Ноль здесь гасит карту: softenWalnut ставит normalScale в 0.
+      if (cloned.normalScale) cloned.normalScale.set(1, 1)
       cloned.metalnessMap = null
       cloned.metalness = 0
       cloned.roughness = 1
+      cloned.transparent = false
+      cloned.opacity = 1
+      cloned.alphaTest = 0
+      cloned.depthWrite = true
+      if ('transmission' in cloned) cloned.transmission = 0
       cloned.needsUpdate = true
       applied += 1
       return cloned
@@ -262,11 +282,11 @@ function tuneLeatherRim(mat, baked) {
  */
 function tuneStitch(mat) {
   if (!mat) return
-  mat.color.set('#f3e6c8')
-  mat.roughness = 0.7
+  mat.color.set('#8a6848')
+  mat.roughness = 0.78
   mat.metalness = 0
-  mat.emissive.set('#a88858')
-  mat.emissiveIntensity = 0.55
+  mat.emissive.set('#5a4030')
+  mat.emissiveIntensity = 0.22
   mat.roughnessMap = null
   mat.metalnessMap = null
   if ('envMapIntensity' in mat) mat.envMapIntensity = 0.08

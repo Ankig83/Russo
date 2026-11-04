@@ -1,0 +1,177 @@
+Руссо — бриф по шкафу, свету и сцене для сайта
+
+Суть: шкаф крутится в браузере (Three.js). Нужны файлы из Blender —
+шкаф отдельно, сцена и свет отдельно. Я подключаю на сайт.
+
+Blender 5.x
+
+
+ЧТО нужно
+
+  shkaf.glb              — шкаф + ножки, без пола и фона
+  studio.glb             — пол, фон, камера, свет, shkaf_anchor
+  shkaf.blend            — исходник (шкаф + сцена в одном файле — ок)
+  hdri.exr или hdri.hdr  — окружение из World, 2k
+  reference.png          — финальный кадр как на сайте (шкаф + свет + пол)
+
+  notes.txt  
+
+  Текстуры отдельной папкой — не нужны, если вшиты в glb.
+
+
+ИМЕНА — НЕ ТРОГАТЬ (шкаф)
+
+  От этих имён завязаны двери, ящики, клики по сайту.
+  Переименовал — сломается, сначала напиши мне.
+
+  shkaf
+  door_left, door_right
+  Beresta_L, Beresta_R
+  drawer_1, drawer_2
+  drawer_tl, drawer_tr, drawer_bl, drawer_br
+  tabl_1, tabl_2, tabl_3, tabl_4
+  leg_front_o, leg_beck_o
+  Beck_W
+
+
+
+
+  Сейчас каша:
+  - model и model.001 — это реальные ножки (~120k вершин, M_BlackCopper_v3)
+  - leg_front_o / leg_beck_o — пустые дубли, без материала, в одной точке
+
+  Нужно:
+  - одна пара ножек: leg_front_o + leg_beck_o
+  - геометрию из model/model.001 перенести сюда (или переименовать)
+  - model / model.001 удалить
+  - материал на ножках обязателен (запечённый PBR, не процедурка)
+
+
+МАТЕРИАЛЫ
+
+  В glb уезжает только Principled BSDF + текстуры.
+  Noise, ColorRamp, Mix Shader — в браузер не попадут. Вообще.
+
+  Процедурку (медь, патина, берёста, кожа) — bake в текстуры до экспорта:
+    baseColor, roughness, normal (normal только PNG), metallic если надо
+    подключить в Principled, normal через Normal Map
+
+  Разрешение: двери/корпус 2048–4096, мелочь 1024–2048.
+  baseColor — sRGB, roughness/metallic/normal — Non-Color.
+
+  Текстуры лучше вшить в glb, не скидывать отдельной папкой.
+
+
+ПЕРЕД ЭКСПОРТОМ
+
+  [ ] метры
+  [ ] Ctrl+A Apply Scale на всём (заклёпки 135_*, кубы в ящиках, glases_n — тоже)
+  [ ] door_right rotation Y = 0
+  [ ] Beck_W под shkaf
+  [ ] лампу «Источник-область» у shkaf убрать — свет живёт в studio.glb
+  [ ] пол и фон — в studio.glb, не в shkaf.glb
+  [ ] почистить неиспользуемые материалы (сейчас 117 штук, на шкафе ~13)
+
+
+ЭКСПОРТ shkaf.glb
+
+  Выделить shkaf и всех детей → Export glTF 2.0 → shkaf.glb
+
+  GLB, Selected Objects, Apply Transform, UVs, Normals, Modifiers.
+  Materials — да. Animations — только если реально анимировал.
+  Свет и камеру в shkaf.glb не включать.
+
+  Draco — по ситуации. Файл до 15–20 MB — норм, больше тоже ок.
+
+
+СЦЕНА И СВЕТ
+
+  Шкаф и сцена — два glb. Так проще менять свет, не трогая шкаф.
+
+  В .blend держи отдельную ветку:
+
+  studio_root
+  ├── studio_floor          — пол, низ на Z=0
+  ├── studio_backdrop       — стена / лайтбокс / циклорама (если есть mesh)
+  ├── shkaf_anchor          — empty, куда встаёт шкаф (позиция + поворот)
+  ├── lights_rig
+  │   ├── light_key         — основной свет на шкаф
+  │   ├── light_fill        — заполняющий (мягче)
+  │   └── light_rim         — контровой сзади/сбоку
+  └── camera_anchor         — камера, кадр как на сайте
+
+  Имена латиницей, без пробелов. Эти не переименовывай:
+    studio_root, studio_floor, studio_backdrop, shkaf_anchor,
+    lights_rig, light_key, light_fill, light_rim, camera_anchor
+
+  HDRI — отдельным файлом .exr/.hdr из World. Без него металл на шкафе
+  будет плоским, это важно.
+
+  Свет в studio.glb экспортируй с галкой «Punctual Lights» (KHR_lights_punctual).
+  Я перенесу параметры в код — позиция, угол, мощность, цвет, размер area.
+  Если лайтбокс у тебя mesh с emissive — тоже в studio.glb, с материалом.
+
+  Экспорт studio.glb:
+    выделить studio_root и детей → glTF → GLB
+    Selected Objects, Apply Transform, UVs, Normals
+    ✅ Cameras
+    ✅ Punctual Lights
+    ✅ Custom Properties
+    shkaf в этот экспорт НЕ включать
+
+  reference.png — рендер из camera_anchor с финальным светом.
+  Это главный ориентир, сверяю с сайтом по нему.
+
+  Сейчас на сайте: тёмный фон, светящийся лайтбокс сзади, мягкий fill
+  от него, контровой rim сверху-справа, отражающий пол. Если меняешь
+  схему — приложи новый reference и опиши в notes.txt что поменялось.
+
+
+ЭКСПОРТ studio.glb — кратко
+
+  studio_root + дети, без shkaf.
+  Cameras + Punctual Lights + Custom Properties — да.
+  Размер Draco можно.
+
+
+СВЕТ — ЧТО НАПИСАТЬ В notes.txt (если неочевидно из glb)
+
+  - цвет фона / лайтбокса
+  - где key и rim (слева/справа/сзади)
+  - насколько сильный контровой
+  - пол зеркальный или матовый
+  - металл должен блестеть сильнее кожи или наоборот
+
+
+ЯЩИКИ → РАЗДЕЛЫ САЙТА
+
+  tabl_1 / prostranstva  — верх-слева
+  tabl_2 / avtorskie_m   — верх-справа
+  tabl_3 / project_M     — низ-слева
+  tabl_4 / about         — низ-справа
+
+  Клик по табличке или фронту ящика → раздел сайта.
+  Выдвигается drawer_1 или drawer_2, не отдельный drawer_tl.
+  нужно переделать, но там не сложно. мне просто времени на них не хватало. но исправь, если нужно
+
+
+ПРОВЕРЬ САМ ПЕРЕД ОТПРАВКОЙ
+
+  shkaf.glb:
+  - gltf-viewer — открывается, не розовый
+  - есть shkaf, door_*, drawer_1/2, leg_*, Beck_W
+  - одна пара ножек, без model/model.001
+  - текстуры внутри
+
+  studio.glb:
+  - есть studio_floor, shkaf_anchor, camera_anchor, lights_rig
+  - камера и свет на месте
+  - shkaf внутри studio.glb нет
+
+  общее:
+  - hdri.exr приложен
+  - reference.png = то, что хочешь видеть на сайте
+
+
+Если хочешь что-то переименовать или переделать иерархию обязательно мне напиши в notes
+Проще положить новую геометрию в старый mesh с тем же именем.

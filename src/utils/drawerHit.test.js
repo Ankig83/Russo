@@ -5,39 +5,29 @@ import {
 } from './drawerHit'
 
 const cases = [
-  ['drawer_tl', 'tabl_1', 'prostranstva', '/private-spaces'],
-  ['drawer_tr', 'tabl_2', 'avtorskie_m', '/author-collections'],
-  ['drawer_bl', 'tabl_3', 'project_M', '/commercial-projects'],
-  ['drawer_br', 'tabl_4', 'about', '/about'],
+  ['drawer_1', '/portfolio'],
+  ['drawer_2', '/about'],
 ]
 
-function node(name, parent = null, materialName = null) {
-  return {
-    name,
-    parent,
-    isMesh: materialName != null,
-    material: materialName ? { name: materialName } : null,
-  }
+function node(name, parent = null) {
+  return { name, parent, isMesh: false, material: null }
 }
 
 describe('drawer navigation contract', () => {
-  it.each(cases)(
-    'maps %s / %s / %s to %s',
-    (drawerName, tablName, materialName, route) => {
-      const drawer = node(drawerName)
-      const tabl = node(tablName, drawer, materialName)
+  it.each(cases)('maps %s to %s', (drawerName, route) => {
+    const drawer = node(drawerName)
+    const plaque = node(`${drawerName}_plaque`, drawer)
 
-      expect(findDrawerSectionFromHit(tabl)).toMatchObject({
-        id: drawerName,
-        route,
-      })
-    },
-  )
+    expect(findDrawerSectionFromHit(plaque)).toMatchObject({
+      id: drawerName,
+      route,
+    })
+  })
 
   it('finds a drawer behind a non-drawer first ray hit', () => {
     const door = node('door_left')
-    const drawer = node('drawer_tr')
-    const tabl = node('tabl_2', drawer, 'avtorskie_m')
+    const drawer = node('drawer_1')
+    const plaque = node('drawer_1_plaque_mebel_screw_L', drawer)
     const model = {
       getObjectByName: (name) => (name === drawer.name ? drawer : null),
     }
@@ -45,15 +35,15 @@ describe('drawer navigation contract', () => {
     const result = findDrawerFromIntersections(
       [
         { object: door, distance: 1 },
-        { object: tabl, distance: 2 },
+        { object: plaque, distance: 2 },
       ],
       model,
     )
 
     expect(result).toMatchObject({
-      section: { id: 'drawer_tr', route: '/author-collections' },
+      section: { id: 'drawer_1', route: '/portfolio' },
       node: drawer,
-      object: tabl,
+      object: plaque,
       firstHitName: 'door_left',
     })
   })
