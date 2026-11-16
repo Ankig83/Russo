@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { useNavigate } from 'react-router-dom'
 import gsap from 'gsap'
 import { useShkafStore } from '../../store/shkafStore'
+import { useAppStore } from '../../store/appStore'
 import {
   SHKAF_MODEL_PATH,
   SHKAF_ROOT_NAME,
@@ -133,7 +134,7 @@ const PRINTED_BOTTLE_MAT = /^Material\.005$|^M_Glengoyne_Glass_PBR$/
 const INTERIOR_GLASS_MAT =
   /^(M_Crystal_Glass|M_Glass_Tumbler|M_Wine_Glass|Glass Transparent Principled|glass-top|Glass|Decanter|Johnnie Walker Whiskey)$/i
 const CLAY_BOTTLE_MAT = /^M_Bottle_Short_Glass$/i
-const STRAY_HIDE = /^(botella-glengoyne-aro)$/i
+const STRAY_HIDE = /^(botella-glengoyne-aro|dried_flowers(_root)?|vase_brass(_root)?)$/i
 const RIGHT_TOP_BOTTLE = 'tapa-gleygoyne'
 const RIGHT_TOP_BOTTLE_SCALE = 0.9
 const RIGHT_TOP_SHELF = 'door_right_detail_a'
@@ -360,6 +361,13 @@ export default function Shkaf() {
   const doorShadowTex = useRef(null)
   const interiorTargets = useMemo(() => collectInteriorShadowTargets(model), [model])
   const interiorTex = useRef(null)
+  const setExtrasReady = useAppStore((s) => s.setExtrasReady)
+  const extrasLeft = useRef(new Set(['books', 'leather', 'walnut', 'shadows', 'copper']))
+  const markExtra = useCallback((key) => {
+    const left = extrasLeft.current
+    if (!left.delete(key)) return
+    if (left.size === 0) setExtrasReady()
+  }, [setExtrasReady])
 
   const pushTune = useCallback(() => {
     if (!cabinetFlags().tune) return
@@ -426,9 +434,11 @@ export default function Shkaf() {
         const books = applyBookCovers(model, tex)
         applyCabinetEnv(model, scene.environment)
         russoLog('info', 'shkaf', 'book covers', { books })
+        markExtra('books')
       })
       .catch((err) => {
         russoLog('warn', 'shkaf', 'book covers failed', { err: String(err) })
+        if (!cancelled) markExtra('books')
       })
     loadLeatherTextures()
       .then((tex) => {
@@ -437,7 +447,11 @@ export default function Shkaf() {
         return loadCabinetLightmaps(gl).then(() => applyCabinetLightmaps(model, gl))
       })
       .then((lightmaps) => {
-        if (cancelled || !lightmaps) return
+        if (cancelled) return
+        if (!lightmaps) {
+          markExtra('leather')
+          return
+        }
         // Кожа после lightmaps: иначе bake с ободка мог остаться / перезаписать материал.
         if (leatherTex) {
           const rims = applyDrawerLeatherRims(model, leatherTex)
@@ -447,14 +461,16 @@ export default function Shkaf() {
         const env = applyCabinetEnv(model, scene.environment)
         pushTune()
         russoLog('info', 'shkaf', 'lightmaps', { ...lightmaps, env })
+        markExtra('leather')
       })
       .catch((err) => {
         russoLog('warn', 'shkaf', 'leather/lightmaps failed', { err: String(err) })
+        if (!cancelled) markExtra('leather')
       })
     return () => {
       cancelled = true
     }
-  }, [gl, model, scene, pushTune])
+  }, [gl, model, scene, pushTune, markExtra])
 
   useLayoutEffect(() => {
     scene.environmentIntensity = CABINET_LOOK.environmentIntensity
@@ -467,38 +483,45 @@ export default function Shkaf() {
     let cancelled = false
     loadWalnutBake()
       .then((textures) => {
-        if (cancelled || !textures) return
-        const walnut = applyWalnutBake(model, textures)
-        applyCabinetEnv(model, scene.environment)
-        pushTune()
-        russoLog('info', 'shkaf', 'walnut bake', { walnut })
+        if (cancelled) return
+        if (textures) {
+          const walnut = applyWalnutBake(model, textures)
+          applyCabinetEnv(model, scene.environment)
+          pushTune()
+          russoLog('info', 'shkaf', 'walnut bake', { walnut })
+        }
+        markExtra('walnut')
       })
       .catch((err) => {
         console.warn('[walnut] не удалось прочитать PNG', err)
+        if (!cancelled) markExtra('walnut')
       })
     return () => {
       cancelled = true
     }
-  }, [model, scene, pushTune])
+  }, [model, scene, pushTune, markExtra])
 
   useEffect(() => {
     let cancelled = false
-    loadDoorShadowBake()
+    const door = loadDoorShadowBake()
       .then((tex) => {
         if (!cancelled) doorShadowTex.current = tex
       })
       .catch((err) => {
         russoLog('warn', 'shkaf', 'door shadow bake load failed', { err: String(err) })
       })
-    loadInteriorShadowBake().then((textures) => {
+    const interior = loadInteriorShadowBake().then((textures) => {
       if (cancelled) return
       interiorTex.current = textures
       russoLog('info', 'shkaf', 'interior shadow', { maps: [...textures.keys()] })
     })
+    Promise.allSettled([door, interior]).then(() => {
+      if (!cancelled) markExtra('shadows')
+    })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [markExtra])
 
   useFrame(() => {
     syncInteriorShadow(interiorTargets, interiorTex.current)
@@ -516,15 +539,21 @@ export default function Shkaf() {
     let cancelled = false
     loadAgedCopperTextures()
       .then((tex) => {
-        if (!cancelled) setAgedCopper(tex)
+        if (cancelled) return
+        if (!tex) {
+          markExtra('copper')
+          return
+        }
+        setAgedCopper(tex)
       })
       .catch((err) => {
         russoLog('warn', 'shkaf', 'aged copper load failed', { err: String(err) })
+        if (!cancelled) markExtra('copper')
       })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [markExtra])
 
   useLayoutEffect(() => {
     if (!agedCopper) return
@@ -533,7 +562,8 @@ export default function Shkaf() {
     applyCabinetEnv(model, scene.environment)
     pushTune()
     russoLog('info', 'shkaf', 'corpus aged copper', { corpus, jewelry })
-  }, [agedCopper, model, scene, pushTune])
+    markExtra('copper')
+  }, [agedCopper, model, scene, pushTune, markExtra])
 
   const animateDoors = useCallback(
     (open) => {

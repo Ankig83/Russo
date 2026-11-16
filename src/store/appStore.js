@@ -5,4 +5,7 @@ export const useAppStore = create((set) => ({
   /** true после того, как лого улетело и сцена полностью открыта */
   loadingDone: false,
   setLoadingDone: () => set({ loadingDone: true }),
+  /** Кожа, свет, тени, орех, обложки, медь корпуса — можно снимать прелоадер */
+  extrasReady: false,
+  setExtrasReady: () => set({ extrasReady: true }),
 }))
