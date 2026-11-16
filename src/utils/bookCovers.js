@@ -21,14 +21,22 @@ function loadTex(file, colorSpace) {
 }
 
 /** Обложки из Blender: в GLB jpeg «book a diff» уходил в чёрный. */
-export async function loadBookCoverTextures() {
-  const [coverA, coverB, bump, norm] = await Promise.all([
+let bookCoverPromise = null
+
+export function loadBookCoverTextures() {
+  if (bookCoverPromise) return bookCoverPromise
+  bookCoverPromise = Promise.all([
     loadTex('book_cover_a.png', THREE.SRGBColorSpace),
     loadTex('book_cover_b.png', THREE.SRGBColorSpace),
     loadTex('book_cover_a_bump.png', THREE.NoColorSpace),
     loadTex('book_cover_a_norm.png', THREE.NoColorSpace),
   ])
-  return { coverA, coverB, bump, norm }
+    .then(([coverA, coverB, bump, norm]) => ({ coverA, coverB, bump, norm }))
+    .catch((err) => {
+      bookCoverPromise = null
+      throw err
+    })
+  return bookCoverPromise
 }
 
 export function applyBookCovers(root, textures) {

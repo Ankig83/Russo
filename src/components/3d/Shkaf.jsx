@@ -781,3 +781,7 @@ export default function Shkaf() {
 }
 
 useGLTF.preload(SHKAF_MODEL_PATH, true, true)
+// Fetch alongside the GLB; apply only after the cabinet has mounted.
+loadBookCoverTextures().catch((err) => {
+  russoLog('warn', 'shkaf', 'book cover preload failed', { err: String(err) })
+})
