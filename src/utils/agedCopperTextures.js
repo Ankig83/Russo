@@ -39,13 +39,22 @@ function cloneTiled(src, repeat) {
   return tex
 }
 
+let agedCopperPromise = null
+
 export function loadAgedCopperTextures() {
+  if (agedCopperPromise) return agedCopperPromise
   const loader = new THREE.TextureLoader()
-  return Promise.all([
+  agedCopperPromise = Promise.all([
     loadTexture(loader, AGED_COPPER_COLOR_URL, THREE.SRGBColorSpace),
     loadTexture(loader, AGED_COPPER_ROUGHNESS_URL, THREE.NoColorSpace),
     loadTexture(loader, AGED_COPPER_NORMAL_URL, THREE.NoColorSpace),
-  ]).then(([map, roughnessMap, normalMap]) => ({ map, roughnessMap, normalMap }))
+  ])
+    .then(([map, roughnessMap, normalMap]) => ({ map, roughnessMap, normalMap }))
+    .catch((err) => {
+      agedCopperPromise = null
+      throw err
+    })
+  return agedCopperPromise
 }
 
 function createAgedCopperMaterial(textures) {

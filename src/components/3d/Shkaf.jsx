@@ -785,3 +785,11 @@ useGLTF.preload(SHKAF_MODEL_PATH, true, true)
 loadBookCoverTextures().catch((err) => {
   russoLog('warn', 'shkaf', 'book cover preload failed', { err: String(err) })
 })
+loadAgedCopperTextures().catch((err) => {
+  russoLog('warn', 'shkaf', 'aged copper preload failed', { err: String(err) })
+})
+for (const preload of [loadWalnutBake, loadDoorShadowBake, loadInteriorShadowBake]) {
+  preload().catch((err) => {
+    russoLog('warn', 'shkaf', 'wood/shadow preload failed', { err: String(err) })
+  })
+}

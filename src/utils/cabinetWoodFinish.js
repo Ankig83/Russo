@@ -146,7 +146,19 @@ function walnutBakeUrls() {
 }
 
 /** PNG 2048: base color sRGB, roughness и normal линейные. Пока файлов нет — текущий шпон. */
+let walnutBakePromise = null
+
 export function loadWalnutBake() {
+  if (!walnutBakePromise) {
+    walnutBakePromise = fetchWalnutBake().catch((err) => {
+      walnutBakePromise = null
+      throw err
+    })
+  }
+  return walnutBakePromise
+}
+
+function fetchWalnutBake() {
   const urls = walnutBakeUrls()
   return Promise.all(
     Object.entries(urls).map(async ([key, url]) => {
