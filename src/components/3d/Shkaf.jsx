@@ -440,11 +440,11 @@ export default function Shkaf() {
         russoLog('warn', 'shkaf', 'book covers failed', { err: String(err) })
         if (!cancelled) markExtra('books')
       })
-    loadLeatherTextures()
-      .then((tex) => {
+    Promise.all([loadLeatherTextures(), loadCabinetLightmaps(gl)])
+      .then(([tex]) => {
         if (cancelled) return null
         leatherTex = tex
-        return loadCabinetLightmaps(gl).then(() => applyCabinetLightmaps(model, gl))
+        return applyCabinetLightmaps(model, gl)
       })
       .then((lightmaps) => {
         if (cancelled) return
