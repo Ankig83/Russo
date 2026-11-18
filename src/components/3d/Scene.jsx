@@ -36,6 +36,7 @@ const TONE_MODE = {
   neutral: ToneMappingMode.NEUTRAL,
 }
 import { russoCanvasReady, russoLog } from '../../utils/russoLog'
+import { watchFirstRender } from '../../utils/loadTiming'
 
 function handleCanvasCreated({ gl, scene }) {
   gl.outputColorSpace = THREE.SRGBColorSpace
@@ -46,6 +47,7 @@ function handleCanvasCreated({ gl, scene }) {
   gl.dithering = true
   scene.background = new THREE.Color(CABINET_BACKGROUND)
   gl.domElement.dataset.russoCanvas = '1'
+  watchFirstRender(gl)
   russoCanvasReady()
 }
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { markFirstFrame } from '../../utils/loadTiming'
+import { armFirstRender, markFirstFrame, markStage } from '../../utils/loadTiming'
 import * as THREE from 'three'
 import { useNavigate } from 'react-router-dom'
 import gsap from 'gsap'
@@ -340,7 +340,12 @@ function prepareMaterials(root) {
 export default function Shkaf() {
   const navigate = useNavigate()
   const gltf = useGLTF(SHKAF_MODEL_PATH, true, true)
-  const model = useMemo(() => gltf.scene.clone(true), [gltf.scene])
+  const model = useMemo(() => {
+    markStage('clone-start')
+    const cloned = gltf.scene.clone(true)
+    markStage('model-cloned')
+    return cloned
+  }, [gltf.scene])
   const { gl, camera, scene } = useThree()
   const environment = useThree((s) => s.scene.environment)
   const [agedCopper, setAgedCopper] = useState(null)
@@ -367,7 +372,11 @@ export default function Shkaf() {
   const markExtra = useCallback((key) => {
     const left = extrasLeft.current
     if (!left.delete(key)) return
-    if (left.size === 0) setExtrasReady()
+    markStage(`extra-${key}`)
+    if (left.size === 0) {
+      markStage('extras-ready')
+      setExtrasReady()
+    }
   }, [setExtrasReady])
 
   const pushTune = useCallback(() => {
@@ -382,6 +391,7 @@ export default function Shkaf() {
   }, [pushTune])
 
   useLayoutEffect(() => {
+    markStage('prepare-start')
     const wood = prepareMaterials(model)
     russoLog('info', 'shkaf', 'wood finish', wood)
     const hinges = applyHingeLegMaterial(model)
@@ -424,6 +434,8 @@ export default function Shkaf() {
       drawer_2: !!model.getObjectByName('drawer_2'),
     })
     pushTune()
+    markStage('model-prepared')
+    armFirstRender()
   }, [model, pushTune, setDoorsOpen])
 
   useEffect(() => {
