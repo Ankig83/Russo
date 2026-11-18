@@ -7,9 +7,10 @@ import { loadWalnutBake } from './cabinetWoodFinish'
 
 /**
  * Старт до ленивого чанка сцены.
- * Сразу: шкаф, студия, кожа и медь (мелкие, видны снаружи).
- * Чуть позже: орех и тень дверей — крупные, не должны обогнать GLB в очереди.
- * Книги и тени интерьера — после responseEnd у GLB, не после window.load.
+ * Сразу: шкаф, студия (без неё Suspense не откроет кадр), кожа и медь.
+ * Орех — 15 МБ PNG того же шпона 2048, который уже лежит в GLB как WebP.
+ * Тень дверей, книги и тени интерьера идут вместе с ним.
+ * Их старт после байтов GLB: иначе они делят канал с файлом шкафа на всё скачивание.
  */
 export function bootCabinetAssets() {
   useGLTF.preload(SHKAF_MODEL_PATH, true, true)
@@ -17,20 +18,15 @@ export function bootCabinetAssets() {
   loadLeatherTextures().catch(() => {})
   loadAgedCopperTextures().catch(() => {})
 
-  const visibleWood = () => {
+  const afterCabinetFile = () => {
     loadWalnutBake().catch(() => {})
     loadDoorShadowBake().catch(() => {})
-  }
-  const interior = () => {
     import('./bookCovers.js').then((mod) => mod.loadBookCoverTextures().catch(() => {}))
     import('./interiorShadowBake.js').then((mod) => mod.loadInteriorShadowBake().catch(() => {}))
   }
 
   if (typeof window === 'undefined') return
-  // 400 мс — предположение, что GLB из <link rel="preload"> уже занял соединение.
-  // Пользу подтвердит только Network, это не измеренный оптимум.
-  window.setTimeout(visibleWood, 400)
-  whenGlbBytesDone(interior)
+  whenGlbBytesDone(afterCabinetFile)
 }
 
 /** window.load этого не гарантирует: GLB запрашивается динамически и может ещё качаться. */
@@ -56,5 +52,7 @@ function whenGlbBytesDone(callback) {
     go()
   })
   observer.observe({ type: 'resource', buffered: true })
-  window.setTimeout(go, 20000)
+  // Запас, если PerformanceObserver не увидит запрос. Раньше 20 с
+  // открывали орех посреди долгого скачивания GLB.
+  window.setTimeout(go, 120000)
 }
