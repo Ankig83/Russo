@@ -11,7 +11,9 @@ import tailwindcss from '@tailwindcss/vite'
 function isDeployExtra(rel) {
   const name = rel.replaceAll('\\', '/')
   if (name.startsWith('models/')) {
-    return name !== 'models/shkaf-cabinet.glb' && name !== 'models/studio-scene.glb'
+    return name !== 'models/shkaf-cabinet.glb'
+      && name !== 'models/shkaf-interior.glb'
+      && name !== 'models/studio-scene.glb'
   }
   if (name.startsWith('HDRI/')) return name !== 'HDRI/studio_small_08_2k.hdr'
   if (name.startsWith('textures/')) {

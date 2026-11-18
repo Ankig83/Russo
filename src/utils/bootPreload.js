@@ -1,5 +1,5 @@
 import { useGLTF } from '@react-three/drei'
-import { SHKAF_MODEL_PATH, STUDIO_SCENE_PATH } from '../constants/shkafNodes'
+import { SHKAF_INTERIOR_PATH, SHKAF_MODEL_PATH, STUDIO_SCENE_PATH } from '../constants/shkafNodes'
 import { loadAgedCopperTextures } from './agedCopperTextures'
 import { loadDoorShadowBake } from './doorShadowBake'
 import { loadLeatherTextures } from './leatherTextures'
@@ -19,6 +19,7 @@ export function bootCabinetAssets() {
   loadAgedCopperTextures().catch(() => {})
 
   const afterCabinetFile = () => {
+    useGLTF.preload(SHKAF_INTERIOR_PATH, true, true)
     loadWalnutBake().catch(() => {})
     loadDoorShadowBake().catch(() => {})
     import('./bookCovers.js').then((mod) => mod.loadBookCoverTextures().catch(() => {}))

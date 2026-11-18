@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { armFirstRender, markFirstFrame, markStage } from '../../utils/loadTiming'
@@ -8,6 +8,7 @@ import gsap from 'gsap'
 import { useShkafStore } from '../../store/shkafStore'
 import { useAppStore } from '../../store/appStore'
 import {
+  SHKAF_INTERIOR_PATH,
   SHKAF_MODEL_PATH,
   SHKAF_ROOT_NAME,
   findDoorPivotNode,
@@ -365,7 +366,10 @@ export default function Shkaf() {
   const hoveredDrawerId = useRef(null)
   const doorShadowTargets = useRef(null)
   const doorShadowTex = useRef(null)
-  const interiorTargets = useMemo(() => collectInteriorShadowTargets(model), [model])
+  const interiorTargetsRef = useRef([])
+  const refreshInteriorTargets = useCallback(() => {
+    interiorTargetsRef.current = collectInteriorShadowTargets(model)
+  }, [model])
   const interiorTex = useRef(null)
   const setExtrasReady = useAppStore((s) => s.setExtrasReady)
   const extrasLeft = useRef(new Set(['books', 'leather', 'walnut', 'shadows', 'copper']))
@@ -434,9 +438,10 @@ export default function Shkaf() {
       drawer_2: !!model.getObjectByName('drawer_2'),
     })
     pushTune()
+    refreshInteriorTargets()
     markStage('model-prepared')
     armFirstRender()
-  }, [model, pushTune, setDoorsOpen])
+  }, [model, pushTune, refreshInteriorTargets, setDoorsOpen])
 
   useEffect(() => {
     let cancelled = false
@@ -537,7 +542,7 @@ export default function Shkaf() {
   }, [markExtra])
 
   useFrame(() => {
-    syncInteriorShadow(interiorTargets, interiorTex.current)
+    syncInteriorShadow(interiorTargetsRef.current, interiorTex.current)
     if (!doorShadowTargets.current) return
     syncDoorShadow(
       doorShadowTargets.current,
@@ -790,8 +795,54 @@ export default function Shkaf() {
       <primitive object={model} />
       <DoorMirrors root={model} />
       <FirstFrameMark />
+      <Suspense fallback={null}>
+        <CabinetInterior shell={model} onReady={refreshInteriorTargets} />
+      </Suspense>
     </>
   )
+}
+
+function CabinetInterior({ shell, onReady }) {
+  const gltf = useGLTF(SHKAF_INTERIOR_PATH, true, true)
+  const environment = useThree((s) => s.scene.environment)
+  useLayoutEffect(() => {
+    const cloned = gltf.scene.clone(true)
+    const attached = []
+    for (const root of [...cloned.children]) {
+      const parentName = root.userData?.russoParent || ''
+      const parent = parentName ? shell.getObjectByName(parentName) : shell
+      if (!parent) {
+        russoLog('warn', 'shkaf', 'interior parent missing', { node: root.name, parentName })
+        continue
+      }
+      parent.add(root)
+      attached.push(root)
+      prepareMaterials(root)
+    }
+    fitRightTopBottle(shell)
+    hideCabinetStrays(shell)
+    applyAgedCopperToJewelry(shell)
+    applyCabinetEnv(shell, environment)
+    let cancelled = false
+    loadBookCoverTextures()
+      .then((tex) => {
+        if (!cancelled) applyBookCovers(shell, tex)
+      })
+      .catch(() => {})
+    loadWalnutBake()
+      .then((tex) => {
+        if (cancelled || !tex) return
+        for (const root of attached) applyWalnutBake(root, tex)
+      })
+      .catch(() => {})
+    onReady()
+    return () => {
+      cancelled = true
+      for (const root of attached) root.removeFromParent()
+      onReady()
+    }
+  }, [environment, gltf.scene, onReady, shell])
+  return null
 }
 
 function FirstFrameMark() {
