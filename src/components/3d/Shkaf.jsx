@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { armFirstRender, holdFirstRender, markFirstFrame, markStage } from '../../utils/loadTiming'
+import { armFirstRender, markFirstFrame, markStage } from '../../utils/loadTiming'
 import * as THREE from 'three'
 import { useNavigate } from 'react-router-dom'
 import gsap from 'gsap'
@@ -435,24 +435,8 @@ export default function Shkaf() {
     })
     pushTune()
     markStage('model-prepared')
-    // Компиляция до первого кадра. Пока она идёт, рендер не рисует пустой кадр.
-    holdFirstRender(true)
-    markStage('compile-async-start')
-    let cancelled = false
-    gl.compileAsync(scene, camera).then(() => {
-      if (!cancelled) markStage('compile-async-done')
-    }).catch(() => {
-      if (!cancelled) markStage('compile-async-done')
-    }).finally(() => {
-      if (cancelled) return
-      holdFirstRender(false)
-      armFirstRender()
-    })
-    return () => {
-      cancelled = true
-      holdFirstRender(false)
-    }
-  }, [model, pushTune, setDoorsOpen, gl, scene, camera])
+    armFirstRender()
+  }, [model, pushTune, setDoorsOpen])
 
   useEffect(() => {
     let cancelled = false

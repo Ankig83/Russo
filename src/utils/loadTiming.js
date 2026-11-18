@@ -15,7 +15,6 @@ let lastMarkName = null
 let probesInstalled = false
 let expectCabinetParse = false
 let renderArmed = false
-let renderHeld = false
 
 const CABINET_FILE = 'shkaf-cabinet.glb'
 
@@ -130,12 +129,7 @@ function recordGlbResponse(response, requestUrl, cacheMode) {
   publishStages()
 }
 
-export function holdFirstRender(held) {
-  renderHeld = held
-}
-
 function captureRender(via, run) {
-  if (renderHeld) return undefined
   const capture = renderArmed
   if (capture) {
     renderArmed = false
