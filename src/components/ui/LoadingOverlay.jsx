@@ -4,6 +4,7 @@ import gsap from 'gsap'
 import { useAppStore } from '../../store/appStore'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { russoAssetsProgress, russoOverlayPhase } from '../../utils/russoLog'
+import { reportLoadTiming } from '../../utils/loadTiming'
 import PreloaderCanvas from '../3d/PreloaderCanvas'
 
 /** Короткий hold, чтобы скан/лого успели — не блокируем после ready на секунды */
@@ -194,6 +195,7 @@ export default function LoadingOverlay() {
     const finish = () => {
       setLoadingDone()
       setHidden(true)
+      reportLoadTiming('overlay-exit')
       russoOverlayPhase('done')
     }
     if (wrap) {

@@ -3,9 +3,10 @@ import { CORPUS_AGED_COPPER } from '../constants/cabinetStudio'
 
 const assetBase = import.meta.env.BASE_URL
 
-export const AGED_COPPER_COLOR_URL = `${assetBase}textures/aged-copper/aged_copper_baseColor.png`
-export const AGED_COPPER_ROUGHNESS_URL = `${assetBase}textures/aged-copper/aged_copper_roughness.png`
-export const AGED_COPPER_NORMAL_URL = `${assetBase}textures/aged-copper/aged_copper_normal.png`
+const COPPER_TEX_VERSION = '1'
+export const AGED_COPPER_COLOR_URL = `${assetBase}textures/aged-copper/aged_copper_baseColor.png?v=${COPPER_TEX_VERSION}`
+export const AGED_COPPER_ROUGHNESS_URL = `${assetBase}textures/aged-copper/aged_copper_roughness.png?v=${COPPER_TEX_VERSION}`
+export const AGED_COPPER_NORMAL_URL = `${assetBase}textures/aged-copper/aged_copper_normal.png?v=${COPPER_TEX_VERSION}`
 
 const CORPUS_NODES = ['corpus_main']
 const KEEP_MAT = /walnut|wood|берёст|beresta/i

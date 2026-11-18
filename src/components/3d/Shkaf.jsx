@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
+import { markFirstFrame } from '../../utils/loadTiming'
 import * as THREE from 'three'
 import { useNavigate } from 'react-router-dom'
 import gsap from 'gsap'
@@ -776,20 +777,19 @@ export default function Shkaf() {
     <>
       <primitive object={model} />
       <DoorMirrors root={model} />
+      <FirstFrameMark />
     </>
   )
 }
 
-useGLTF.preload(SHKAF_MODEL_PATH, true, true)
-// Fetch alongside the GLB; apply only after the cabinet has mounted.
-loadBookCoverTextures().catch((err) => {
-  russoLog('warn', 'shkaf', 'book cover preload failed', { err: String(err) })
-})
-loadAgedCopperTextures().catch((err) => {
-  russoLog('warn', 'shkaf', 'aged copper preload failed', { err: String(err) })
-})
-for (const preload of [loadWalnutBake, loadDoorShadowBake, loadInteriorShadowBake]) {
-  preload().catch((err) => {
-    russoLog('warn', 'shkaf', 'wood/shadow preload failed', { err: String(err) })
+function FirstFrameMark() {
+  const marked = useRef(false)
+  useFrame(() => {
+    if (marked.current) return
+    marked.current = true
+    markFirstFrame()
   })
+  return null
 }
+
+useGLTF.preload(SHKAF_MODEL_PATH, true, true)

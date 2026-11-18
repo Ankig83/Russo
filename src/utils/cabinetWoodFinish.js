@@ -139,9 +139,9 @@ function walnutBakeUrls() {
   const base = `${assetBase}${CABINET_LOOK.walnut.dir}`
   const files = CABINET_LOOK.walnut.files
   return {
-    baseColor: `${base}${files.baseColor}`,
-    roughness: `${base}${files.roughness}`,
-    normal: `${base}${files.normal}`,
+    baseColor: `${base}${files.baseColor}?v=1`,
+    roughness: `${base}${files.roughness}?v=1`,
+    normal: `${base}${files.normal}?v=1`,
   }
 }
 
@@ -160,34 +160,13 @@ export function loadWalnutBake() {
 
 function fetchWalnutBake() {
   const urls = walnutBakeUrls()
-  return Promise.all(
-    Object.entries(urls).map(async ([key, url]) => {
-      try {
-        const res = await fetch(url, { method: 'HEAD' })
-        const type = res.headers.get('content-type') || ''
-        const png = res.ok && !type.includes('text/html')
-        return [key, png ? url : null]
-      } catch {
-        return [key, null]
-      }
-    }),
-  ).then(async (pairs) => {
-    const missing = pairs.filter(([, url]) => !url).map(([key]) => CABINET_LOOK.walnut.files[key])
-    if (missing.length) {
-      if (!walnutBakeWarned) {
-        walnutBakeWarned = true
-        console.warn(
-          `[walnut] нет PNG в ${CABINET_LOOK.walnut.dir}: ${missing.join(', ')}. Оставлен текущий шпон, JPEG-нормаль и SpecularMap сняты.`,
-        )
-      }
-      return null
-    }
-    const loader = new THREE.TextureLoader()
-    const [baseColor, roughness, normal] = await Promise.all([
-      loader.loadAsync(urls.baseColor),
-      loader.loadAsync(urls.roughness),
-      loader.loadAsync(urls.normal),
-    ])
+  const loader = new THREE.TextureLoader()
+  return Promise.all([
+    loader.loadAsync(urls.baseColor),
+    loader.loadAsync(urls.roughness),
+    loader.loadAsync(urls.normal),
+  ])
+    .then(([baseColor, roughness, normal]) => {
     baseColor.colorSpace = THREE.SRGBColorSpace
     roughness.colorSpace = THREE.NoColorSpace
     normal.colorSpace = THREE.NoColorSpace
@@ -202,7 +181,17 @@ function fetchWalnutBake() {
       tex.needsUpdate = true
     }
     return { baseColor, roughness, normal }
-  })
+    })
+    .catch((err) => {
+      if (!walnutBakeWarned) {
+        walnutBakeWarned = true
+        console.warn(
+          `[walnut] нет PNG в ${CABINET_LOOK.walnut.dir}. Оставлен текущий шпон.`,
+          err,
+        )
+      }
+      return null
+    })
 }
 
 export function applyWalnutBake(root, textures) {

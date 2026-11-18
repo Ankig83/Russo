@@ -45,6 +45,7 @@ function handleCanvasCreated({ gl, scene }) {
   gl.shadowMap.type = THREE.PCFSoftShadowMap
   gl.dithering = true
   scene.background = new THREE.Color(CABINET_BACKGROUND)
+  gl.domElement.dataset.russoCanvas = '1'
   russoCanvasReady()
 }
 
@@ -267,7 +268,7 @@ function StudioCameraSync({ position, target }) {
   return null
 }
 
-export default function Scene() {
+export default function Scene({ active = true }) {
   const isMobile = useIsMobile()
   const perf = useStudioPerformance()
   const flags = cabinetFlags()
@@ -308,6 +309,12 @@ export default function Scene() {
   }, [])
 
   useEffect(() => {
+    if (!active) return undefined
+    const id = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
+    return () => cancelAnimationFrame(id)
+  }, [active])
+
+  useEffect(() => {
     const onLost = () => setWebglLost(true)
     window.addEventListener('russo:webgl-lost', onLost)
     return () => window.removeEventListener('russo:webgl-lost', onLost)
@@ -332,6 +339,7 @@ export default function Scene() {
       <WebGLErrorBoundary fallback={<WebGLFallback />}>
         <Canvas
           shadows
+          frameloop={active ? 'always' : 'never'}
           dpr={perf.dpr}
           gl={{
             powerPreference: 'default',

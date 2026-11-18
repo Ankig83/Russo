@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { useEffect } from 'react'
 import Header from '../components/ui/Header'
 import LoadingOverlay from '../components/ui/LoadingOverlay'
 import DebugHud from '../components/ui/DebugHud'
@@ -7,10 +7,7 @@ import { useShkafStore } from '../store/shkafStore'
 import { russoLog, russoPatch } from '../utils/russoLog'
 import { cabinetFlags } from '../utils/cabinetQuery'
 
-/** Canvas/R3F — отдельный чанк; UI shell монтируется сразу */
-const Scene = lazy(() => import('../components/3d/Scene'))
-
-/** Главная страница с интерактивным 3D-шкафом */
+/** Главная страница. Сцена живёт в App и не пересоздаётся при возврате. */
 export default function Home() {
   const reset = useShkafStore((s) => s.reset)
   const compare = cabinetFlags().compare
@@ -29,10 +26,7 @@ export default function Home() {
   }, [reset])
 
   return (
-    <div className="relative h-dvh min-h-screen w-screen overflow-hidden">
-      <Suspense fallback={null}>
-        <Scene />
-      </Suspense>
+    <div className="pointer-events-none relative z-10 h-dvh min-h-screen w-screen overflow-hidden">
       {!compare && <ActiveSectionTitle />}
       {!compare && <Header />}
       {!compare && <LoadingOverlay />}
