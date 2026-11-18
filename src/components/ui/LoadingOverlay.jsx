@@ -18,7 +18,7 @@ const DOCK_FAILSAFE_MS = 1800
 const PRELOADER_KIND = 'video'
 function BlueprintFilm() {
   const isMobile = useIsMobile()
-  const src = `${import.meta.env.BASE_URL}video/preloader-blueprint.mp4?v=cabinet`
+  const src = `${import.meta.env.BASE_URL}video/preloader-blueprint.mp4?v=cabinet2`
   const videoStyle = {
     position: 'absolute',
     inset: 0,
