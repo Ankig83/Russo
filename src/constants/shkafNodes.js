@@ -3,7 +3,13 @@ const assetBase = import.meta.env.BASE_URL
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
 /** v64 — door panels restored (authored UV, original birch). Walnut samples automap. */
-export const SHKAF_MODEL_VERSION = '70'
+/** v71 — новый шкаф из чистая1: лёгкие панели, медь торца, посуда на дверках */
+export const SHKAF_MODEL_VERSION = '71'
+/**
+ * true — шпон остаётся таким, как в GLB (развёртка и карты с экспорта).
+ * false — старая подмена общей картой ореха и снятие нормали.
+ */
+export const USE_GLB_WOOD = true
 export const SHKAF_MODEL_PATH = `${assetBase}models/shkaf-cabinet.glb?v=${SHKAF_MODEL_VERSION}`
 /** Полки, бутылки, книги, задник. Не в первом файле: снаружи их не видно. */
 export const SHKAF_INTERIOR_PATH = `${assetBase}models/shkaf-interior.glb?v=${SHKAF_MODEL_VERSION}`

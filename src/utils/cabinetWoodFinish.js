@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { CABINET_LOOK } from '../constants/cabinetStudio'
+import { USE_GLB_WOOD } from '../constants/shkafNodes'
 
 const WALNUT_RE = /walnut/i
 const assetBase = import.meta.env.BASE_URL
@@ -195,6 +196,7 @@ function fetchWalnutBake() {
 }
 
 export function applyWalnutBake(root, textures) {
+  if (USE_GLB_WOOD) return 0
   if (!root || !textures) return 0
   let applied = 0
   root.traverse((mesh) => {
@@ -323,6 +325,6 @@ export function finishCabinetWood(mesh) {
     tuneList(mesh, tuneStitch)
     return 'stitch'
   }
-  if (applyWalnut(mesh)) return 'walnut'
+  if (!USE_GLB_WOOD && applyWalnut(mesh)) return 'walnut'
   return null
 }

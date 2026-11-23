@@ -32,6 +32,9 @@ dist-ssr
 public/models/shkaf_full.glb
 public/models/shkaf.source.glb
 public/models/_opt_work/
+public/models/_cabinet_export.glb
+public/textures/door-copper/
+public/textures/plaques/
 
 # Python cache (Blender-скрипты)
 __pycache__/
