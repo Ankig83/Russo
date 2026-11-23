@@ -3,8 +3,8 @@ const assetBase = import.meta.env.BASE_URL
 /** Путь к GLB-модели */
 /** Увеличивай версию после каждого re-export из Blender (сброс кэша useGLTF) */
 /** v64 — door panels restored (authored UV, original birch). Walnut samples automap. */
-/** v73 — убраны пустые слоты текстур, из-за которых GLTFLoader падал после видео */
-export const SHKAF_MODEL_VERSION = '73'
+/** v74 — береста, кожа ручек и ножки снова с карт 2048/4096 */
+export const SHKAF_MODEL_VERSION = '74'
 /**
  * true — шпон остаётся таким, как в GLB (развёртка и карты с экспорта).
  * false — старая подмена общей картой ореха и снятие нормали.

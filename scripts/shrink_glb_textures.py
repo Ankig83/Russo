@@ -27,9 +27,9 @@ OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / 'public' / 'models' / '
 
 # (regex по имени материала, размер для всех слотов | {слот: размер})
 RULES = [
-    (r'^Material\.006$', 512),                      # ручки
-    (r'^Material\.00[347]$', 1024),                 # таблички node_0, node_0.001, node_0.002
-    (r'^door_(left|right)_copper$', 2048),          # двери: было 4096
+    # Material.006 (береста и кожа ручек), Material.003 (ножки) и door_*_copper
+    # не сжимать: на 512/1024 береста плывёт, кожа слипается, в ножках дыры от нормали.
+    (r'^Material\.00[47]$', 1024),                  # таблички node_0.001, node_0.002
     (r'^Dark Walnut', {'mr': 1024}),                # орех: шероховатость не нуждается в 2048
     (r'^Glass', 512),                               # смазы на стекле
     (r'Johnnie|M_JW_Foil|^Mt\.counter$|^Decanter$|^Material\.0(08|09|11)$', 1024),  # реквизит
